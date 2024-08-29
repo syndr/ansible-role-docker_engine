@@ -1,0 +1,32 @@
+---
+# Make sure the input data is sane
+
+- name: Data types are valid
+  ansible.builtin.assert:
+    that:
+      - docker_engine_auths is mapping
+      - docker_engine_daemon_options is mapping
+      - docker_engine_package is string
+      - docker_engine_package_version is string
+      - docker_engine_extra_packages | type_debug == "list"
+      - docker_engine_package_state is string
+      - docker_engine_allow_restart is boolean
+      - docker_engine_allow_downgrade is boolean
+      - docker_engine_service_manage is boolean
+      - docker_engine_service_state is string
+      - docker_engine_restart_handler_state is string
+      - docker_engine_networks | type_debug == "list"
+      - docker_engine_users | type_debug == "list"
+    fail_msg: "Invalid data types in input data"
+    success_msg: "Data types match specification"
+
+- name: States are valid
+  ansible.builtin.assert:
+    that:
+      - docker_engine_package_state in ['present', 'latest', 'absent']
+      - docker_engine_service_state in ['started', 'stopped', 'restarted']
+      - docker_engine_restart_handler_state in ['started', 'stopped', 'restarted']
+      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$')
+    fail_msg: "Invalid state in input data. Check your configuration data."
+    success_msg: "States are within accepted values"
+

@@ -1,0 +1,100 @@
+---
+- name: Ensure docker users exist in docker group.
+  become: true
+  user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  with_items: "{{ docker_engine_users }}"
+
+- name: Log into Docker registrars
+  block:
+    - name: Check if config.json exists
+      become: true
+      ansible.builtin.stat:
+        path: "/etc/docker/config.json"
+      register: daemon_file
+
+    - name: Create config.json if it doesn't exist
+      become: true
+      ansible.builtin.file:
+        path: "/etc/docker/config.json"
+        state: touch
+      when: daemon_file.stat.exists == False
+
+    - name: Log into Docker registrar
+      become: true
+      community.docker.docker_login:
+        registry_url: "{{ item.key }}"
+        username: "{{ item.value.user }}"
+        password: "{{ item.value.pass }}"
+        config_path: /etc/docker/config.json
+      loop: "{{ docker_engine_auths | dict2items }}"
+      no_log: true
+      register: __docker_engine_login_results
+
+  rescue:
+    # TODO: - name: Send failure alert about not being able to login to registrar
+    #  if the config.json file is incorrect formatted (Eg. padding, chars, vars) then docker login will fail
+    #  perhaps wiping the file and restarting this process would be a solution for badly formatted files, otherwise
+    #  having a method that can skip that specific logins would be nice to have
+    #  https://github.com/influxdata/sre-ops/issues/457
+
+    # Doing so this way instead of in a loop as it avoids exposing credentials in the logs
+    - name: Collect failure messages
+      ansible.builtin.set_fact:
+        __docker_engine_login_fail_msgs: "{{ __docker_engine_login_results.results | selectattr('failed', 'equalto', true) | map(attribute='msg') | list }}"
+
+    - name: Handle failure logic
+      ansible.builtin.assert:
+        that:
+          - docker_engine_auths_allow_failed
+        fail_msg: >
+          "Failed to log in to Docker registrars. Check your credentials or /etc/docker/config.json formatting.
+          Errors: {{ __docker_engine_login_fail_msgs | default([]) }}"
+        success_msg: "Continuing on Docker login failures. Errors: {{ __docker_engine_login_fail_msgs | default([]) }}"
+
+- name: Ensure Docker config file permissions
+  become: true
+  ansible.builtin.file:
+    state: file
+    dest: "/etc/docker/config.json"
+    owner: "root"
+    group: "docker"
+    mode: "0640"
+
+- name: Create .docker folder in users
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item }}/.docker"
+    state: directory
+    mode: "0755"
+    owner: "{{ item }}"
+    group: "{{ item }}"
+  with_items: "{{ docker_engine_users }}"
+
+- name: Copy file with owner and permissions
+  become: true
+  ansible.builtin.copy:
+    src: "/etc/docker/config.json"
+    dest: /home/{{ item }}/.docker/config.json
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: "0644"
+    remote_src: true
+  with_items: "{{ docker_engine_users }}"
+
+- name: Create /root/.docker folder
+  become: true
+  ansible.builtin.file:
+    path: "/root/.docker"
+    state: directory
+    mode: "0755"
+
+- name: Copy file with owner and permissions
+  become: true
+  ansible.builtin.copy:
+    src: "/etc/docker/config.json"
+    dest: /root/.docker/config.json
+    mode: "0644"
+    remote_src: yes

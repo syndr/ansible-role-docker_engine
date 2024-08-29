@@ -1,0 +1,76 @@
+---
+# Handle Docker version for dnf-based systems
+# This task file is included by install-docker.yml
+# Should only be run if Docker is not installed, or docker_engine_package_state is set to "latest"
+
+- name: DNF versionlock is installed
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - dnf-plugins-core
+      - python3-dnf-plugin-versionlock
+    state: present
+
+- name: Update DNF cache
+  become: true
+  ansible.builtin.dnf:
+    update_cache: true
+  when: docker_engine_package_state == 'latest'
+
+- name: Find matching package names
+  ansible.builtin.command:
+    cmd: "dnf list --showduplicates {{ docker_engine_package }}"
+  register: __docker_engine_package_list_raw
+  changed_when: false
+
+- name: Extract applicable package versions
+  ansible.builtin.set_fact:
+    # Select only the lines that match the package name and version, and extract the version number
+    __docker_engine_package_versions: "{{ __docker_engine_package_list_raw.stdout_lines |
+      map('regex_search', '(\\s*' ~ docker_engine_package ~ '.*\\s\\d?\\:?)(.*' ~ docker_engine_package_version ~ '\\S*)(.*)', '\\2') | flatten  }}"
+
+- name: Validate discovered packages
+  ansible.builtin.assert:
+    that:
+      - __docker_engine_package_versions | length > 0
+    fail_msg: "No matching Docker package versions found for {{ docker_engine_package_version }}"
+    success_msg: "Found matching Docker package versions: {{ __docker_engine_package_versions }}"
+
+- name: Docker version status is
+  ansible.builtin.debug:
+    msg: |
+      "Latest matching version: {{ __docker_engine_package_versions | last }}
+      Installed version: {{ __docker_engine_installed_version | default('none', true) }}
+      Desired version: {{ docker_engine_package_version }}"
+
+- name: 🐟 Show 'latest upgrade' state
+  ansible.builtin.debug:
+    var: docker_engine_package_state == 'latest' and (__docker_engine_package_versions | last != __docker_engine_installed_version)
+    verbosity: 1
+
+- name: 🐟 Show 'present install' state
+  ansible.builtin.debug:
+    var: docker_engine_package_state == 'present' and (docker_engine_package_version not in __docker_engine_installed_version)
+    verbosity: 1
+
+- name: Remove existing version lock for {{ docker_engine_package }}
+  when: >
+    docker_engine_package_state == 'latest' and (__docker_engine_package_versions | last != __docker_engine_installed_version) or
+    docker_engine_package_state == 'present' and (docker_engine_package_version not in __docker_engine_installed_version) or
+    docker_engine_package_state == 'absent'
+  become: true
+  community.general.dnf_versionlock:
+    state: absent
+    name: "{{ docker_engine_package }}"
+
+- name: Add new version lock - {{ __docker_engine_package_versions | last }}
+  when: >
+    docker_engine_package_state == 'latest' and (__docker_engine_package_versions | last != __docker_engine_installed_version) or
+    (docker_engine_package_state == 'present' and __docker_engine_installed_version is not truthy)
+  become: true
+  community.general.dnf_versionlock:
+    state: present
+    name: "{{ docker_engine_package }}-{{ __docker_engine_package_versions | last }}"
+
+# TODO: Add support for service restart protection (do not update package unless enabled)
+

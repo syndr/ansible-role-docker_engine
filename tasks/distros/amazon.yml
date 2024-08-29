@@ -1,0 +1,59 @@
+---
+# Perform Amazon Linux specific preparation tasks
+
+# Amazon builtin repos use "docker" package name
+- name: Set docker package name
+  ansible.builtin.set_fact:
+    docker_engine_package: docker
+  when: docker_engine_package == "DEFAULT"
+
+#- name: Configure for Amazon Linux 2
+#  when: false
+#  # WARN This is not completed and does not work ⬇
+#  # AL2 is Cent7 based, but newer versions of Docker require additional packages such as
+#  # container-se-linux, fuse-overlayfs, and slirp4netns. The attempt to install these packages
+#  # is both unsupported and a path laced with folly, but you are certainly welcome to attempt it!
+#  block:
+#    - name: Set docker package name
+#      ansible.builtin.set_fact:
+#        docker_engine_package: docker-ce
+#
+#    - name: Add Docker Community Edition repository
+#      become: true
+#      ansible.builtin.yum_repository:
+#        name: docker-ce-stable
+#        description: Docker CE Stable - $basearch
+#        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+#        enabled: yes
+#        gpgcheck: yes
+#        gpgkey: https://download.docker.com/linux/centos/gpg
+#
+#    # These can be downloaded from http://mirror.centos.org/centos/7/extras/x86_64/Packages/
+#    - name: Install package dependencies
+#      vars:
+#        __docker_compat_al2_deps:
+#          - fuse3-libs-3.6.1-4.el7.x86_64.rpm
+#          - fuse3-3.6.1-4.el7.x86_64.rpm
+#          - fuse-overlayfs-0.7.2-6.el7_8.x86_64.rpm
+#          - libselinux-2.5-15.el7.x86_64.rpm
+#          - libsemanage-2.5-14.el7.x86_64.rpm
+#          - libselinux-utils-2.5-15.el7.x86_64.rpm
+#          - policycoreutils-2.5-34.el7.x86_64.rpm
+#          - selinux-policy-3.13.1-268.el7_9.2.noarch.rpm
+#          - selinux-policy-targeted-3.13.1-268.el7_9.2.noarch.rpm
+#          - container-selinux-2.119.2-1.911c772.el7_8.noarch.rpm
+#          - slirp4netns-0.4.3-4.el7_8.x86_64.rpm
+#      block:
+#        - name: Copy package files
+#          ansible.builtin.copy:
+#            src: "{{ role_path }}/files/centos7/{{ item }}"
+#            dest: "/tmp/{{ item }}"
+#          loop: "{{ __docker_compat_al2_deps }}"
+#
+#        - name: Install packages
+#          become: true
+#          ansible.builtin.yum:
+#            name: "/tmp/{{ item }}"
+#            state: present
+#          loop: "{{ __docker_compat_al2_deps }}"
+

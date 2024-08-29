@@ -1,0 +1,9 @@
+---
+# handlers file for Docker
+
+- name: restart docker
+  become: true
+  ansible.builtin.service:
+    name: docker
+    state: "{{ docker_engine_restart_handler_state }}"
+  when: docker_engine_service_manage | bool

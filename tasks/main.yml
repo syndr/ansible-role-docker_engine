@@ -1,0 +1,78 @@
+---
+
+- name: Validate configuration
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Gather some host facts
+  ansible.builtin.setup:
+    filter:
+      - 'ansible_distribution*'
+      - 'ansible_pkg_mgr'
+      - 'ansible_architecture'
+
+- name: Install Docker
+  block:
+    - name: Manage docker package
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/docker-package.yml"
+  rescue:
+    - name: Docker installation management has failed!
+      ansible.builtin.fail:
+        msg: There was an error managing the Docker packages on this system.
+
+# TODO: Actually remove config files if state is 'absent'
+- name: Configure for 'installed' state
+  when: docker_engine_package_state != 'absent'
+  block:
+    - name: Ensure Docker is started and enabled at boot.
+      become: true
+      ansible.builtin.service:
+        name: docker
+        state: "{{ docker_engine_service_state }}"
+        enabled: "{{ docker_engine_service_enabled }}"
+      when: docker_engine_service_manage | bool
+
+    - name: Ensure /etc/docker directory exists.
+      become: true
+      file:
+        path: /etc/docker
+        state: directory
+        mode: 0755
+      when: docker_engine_daemon_options.keys() | length > 0
+
+    - name: Configure Docker daemon options.
+      become: true
+      copy:
+        content: "{{ docker_engine_daemon_options | to_nice_json(indent=2) }}"
+        dest: /etc/docker/daemon.json
+        mode: 0644
+      when: docker_engine_daemon_options.keys() | length > 0
+      notify: restart docker
+
+    - name: Configure Docker Users
+      include_tasks: docker-users.yml
+
+    - name: Docker network exists
+      become: true
+      community.docker.docker_network:
+        name: "{{ docker_engine_network_name }}"
+        driver: bridge
+        internal: false
+      loop: "{{ docker_engine_networks }}"
+      loop_control:
+        loop_var: docker_engine_network_name
+
+    - name: 🚽 Run pending handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Check Docker version information
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_version.yml"
+
+    # NOTE: At present, 'latest' will allow newer versions than the one specified
+    - name: Validate docker version
+      when: docker_engine_package_state == 'present'
+      ansible.builtin.assert:
+        that:
+          - docker_engine_package_version in __docker_engine_installed_version
+        fail_msg: "Docker version is {{ __docker_engine_installed_version }} but {{ docker_engine_package_version }} is expected!"
+        success_msg: "Docker version is as expected"
+

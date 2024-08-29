@@ -1,0 +1,119 @@
+---
+# Install the docker package for this system
+
+- name: Package manager detection status
+  ansible.builtin.assert:
+    that:
+      - ansible_pkg_mgr is in ['apt', 'yum', 'dnf']
+    fail_msg: "No supported package manager found!"
+    success_msg: "Package manager found: {{ ansible_pkg_mgr }}"
+
+- name: Discover existing installs
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_version.yml"
+
+- name: Prepare for package install
+  block:
+    - name: Run os specific install tasks
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/distros/{{ ansible_distribution | lower }}.yml"
+      ignore_errors: true
+
+    - name: Docker package name is known
+      ansible.builtin.assert:
+        that:
+          - docker_engine_package is defined
+          - docker_engine_package != "DEFAULT"
+        fail_msg: "Docker package name is not known! Config may need to be added to docker_engine role for this OS"
+        success_msg: "Docker package name is known: {{ docker_engine_package }}"
+
+    - name: Package upgrade is needed
+      when:
+        - __docker_engine_installed_version is truthy
+        - (docker_engine_package_version is version_compare(__docker_engine_installed_version, '>') if docker_engine_package_state == 'latest' else false)
+        - (docker_engine_package_version not in __docker_engine_installed_version if docker_engine_package_state == 'present' else false)
+        - docker_engine_package_state != 'absent'
+      ansible.builtin.assert:
+        that:
+          - docker_engine_allow_restart is true
+        fail_msg: "Upgrading Docker requires a service restart! Set docker_engine_allow_restart to true to allow \
+                   {{ __docker_engine_installed_version }} --> {{ docker_engine_package_version }}."
+        success_msg: "Upgrading Docker is allowed."
+
+    - name: Package downgrade needed
+      when:
+        - __docker_engine_installed_version is truthy
+        - (docker_engine_package_version is version_compare(__docker_engine_installed_version, '<')
+          if docker_engine_package_version not in __docker_engine_installed_version else false)
+        - docker_engine_package_state != 'absent'
+      ansible.builtin.assert:
+        that:
+          - docker_engine_allow_downgrade is true
+        fail_msg: "Downgrading Docker is not allowed! Set docker_engine_allow_downgrade to true to allow \
+                   {{ __docker_engine_installed_version }} --> {{ docker_engine_package_version }}."
+        success_msg: "Downgrading Docker is allowed."
+
+    # The 'present' filter will just look at the package name -- force updating to a valid version
+    #  if service restarting is allowed
+    - name: Enable package version update
+      ansible.builtin.set_fact:
+        docker_engine_package_state: "latest"
+      when:
+        - docker_engine_package_state == "present"
+        - docker_engine_package_version not in __docker_engine_installed_version
+        - docker_engine_allow_restart is true
+
+- name: Manage docker packages
+  block:
+    - name: Manage Docker package for apt-based systems
+      block:
+        # TODO: Add support for APT-based systems, including version locking
+        - name: APT configuration not currently supported
+          ansible.builtin.fail:
+            msg: "You get a 🍪 for adding support for APT-based systems!"
+      when: ansible_pkg_mgr == 'apt'
+
+    - name: Manage Docker package for yum-based systems
+      block:
+        - name: Process version status
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-yum.yml"
+          when: docker_engine_package_state != 'absent'
+
+        # This shouldn't be required for upgrades -- just downgrades
+        - name: Explicit package version required
+          ansible.builtin.set_fact:
+            __docker_engine_package_name: "{{ docker_engine_package }}-{{ __docker_engine_package_versions | last }}"
+          when:
+            - docker_engine_package_state != 'absent'
+            - docker_engine_package_version not in __docker_engine_installed_version
+            - docker_engine_allow_downgrade is true
+
+        - name: Manage Docker package
+          become: true
+          ansible.builtin.yum:
+            name: "{{ [__docker_engine_package_name | default(docker_engine_package, true)] + docker_engine_extra_packages }}"
+            state: "{{ docker_engine_package_state }}"
+            allow_downgrade: "{{ docker_engine_allow_downgrade }}"
+      when: ansible_pkg_mgr == 'yum'
+
+    - name: Install Docker for dnf-based systems
+      block:
+        - name: Process version status
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-dnf.yml"
+          when: docker_engine_package_state != 'absent'
+
+        # This shouldn't be required for upgrades -- just downgrades
+        - name: Explicit package version required
+          ansible.builtin.set_fact:
+            __docker_engine_package_name: "{{ docker_engine_package }}-{{ __docker_engine_package_versions | last }}"
+          when:
+            - docker_engine_package_state != 'absent'
+            - docker_engine_package_version not in __docker_engine_installed_version
+            - docker_engine_allow_downgrade is true
+
+        - name: Manage Docker package
+          become: true
+          ansible.builtin.dnf:
+            name: "{{ [__docker_engine_package_name | default(docker_engine_package, true)] + docker_engine_extra_packages }}"
+            state: "{{ docker_engine_package_state }}"
+            allow_downgrade: "{{ docker_engine_allow_downgrade }}"
+      when: ansible_pkg_mgr == 'dnf'
+

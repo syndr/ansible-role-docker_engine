@@ -1,0 +1,7 @@
+---
+# vars file for Docker
+
+# Explicit package name with version number
+# Should only be relevant on package downgrade request
+__docker_engine_package_name: ""
+

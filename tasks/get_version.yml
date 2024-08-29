@@ -1,0 +1,27 @@
+---
+# Find currently running docker version
+
+- name: Check if Docker is already installed
+  become: true
+  ansible.builtin.command:
+    cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+  register: __docker_engine_installed_version_raw
+  changed_when: false
+  failed_when: false
+
+- name: Extract docker version number
+  ansible.builtin.set_fact:
+    __docker_engine_installed_version: "{{ __docker_engine_installed_version_raw.stdout | from_json }}"
+  when: __docker_engine_installed_version_raw.rc == 0
+
+- name: Installed docker not found
+  ansible.builtin.set_fact:
+    __docker_engine_installed_version: ""
+  when: __docker_engine_installed_version_raw.rc != 0
+
+- name: 🦋 Discovered docker version is
+  ansible.builtin.debug:
+    var: __docker_engine_installed_version
+    verbosity: 1
+  when: __docker_engine_installed_version is defined
+

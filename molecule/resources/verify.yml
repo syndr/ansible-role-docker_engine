@@ -1,0 +1,173 @@
+---
+# Verify that the role being tested has done what it's supposed to
+
+# TODO: Change from explicit version numbers to something more flexible
+#        (adding more OS support will likely break these tests otherwise)
+
+# NOTE: Amazon Linux 2 only has one version of docker in the default repos
+
+- name: Prepare for verification
+  hosts: molecule
+  tasks:
+    - name: Load OS compatibility settings
+      ansible.builtin.include_tasks: tasks/os_compat.yml
+
+- name: Verify Docker Upgrade
+  hosts: molecule
+  vars:
+    ci_target_version: "27.2"
+    ansible_user: molecule_runner
+  tasks:
+    - name: OS supports this check
+      when: not (ansible_distribution == "Amazon" and ansible_distribution_major_version == "2")
+      block:
+        - name: Install a different version of docker, and give ci user molecule permissions
+          ansible.builtin.include_role:
+            name: docker_engine
+          vars:
+            # WARN: This will not be in the repository for ever...
+            docker_engine_package_version:  "{{ ci_target_version }}"
+            docker_engine_users:
+              - "{{ ansible_user }}"
+
+        - name: Check that we can run docker without sudo
+          ansible.builtin.command:
+            cmd: "docker ps"
+          become: false
+          changed_when: false
+
+        - name: Get the docker engine version
+          ansible.builtin.command:
+            cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+          register: __ci_docker_version_raw
+          changed_when: false
+
+        - name: Validate upgrade status
+          ansible.builtin.assert:
+            that:
+              - ci_target_version in __ci_docker_version_raw.stdout | from_json
+            fail_msg: "The expected docker version ({{ ci_target_version }}) is not installed"
+            success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
+
+- name: Verify Docker Downgrade
+  hosts: molecule
+  vars:
+    ci_target_version: "26.0"
+    ansible_user: molecule_runner
+  tasks:
+    - name: OS supports this check
+      when: not (ansible_distribution == "Amazon" and ansible_distribution_major_version == "2")
+      block:
+        - name: Install version {{ ci_target_version }} of docker, and give ci user docker permissions
+          ansible.builtin.include_role:
+            name: docker_engine
+          vars:
+            # WARN: This will not be in the repository for ever...
+            docker_engine_package_version:  "{{ ci_target_version }}"
+            docker_engine_users:
+              - "{{ ansible_user }}"
+            docker_engine_allow_downgrade: true
+
+        - name: Check that we can run docker without sudo
+          ansible.builtin.command:
+            cmd: "docker ps"
+          become: false
+          changed_when: false
+
+        - name: Get the docker engine version
+          ansible.builtin.command:
+            cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+          register: __ci_docker_version_raw
+          changed_when: false
+
+        - name: Docker downgrade was successful
+          ansible.builtin.assert:
+            that:
+              - ci_target_version in __ci_docker_version_raw.stdout | from_json
+            fail_msg: "The expected docker version ({{ ci_target_version }}) is not installed"
+            success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
+
+- name: Validate state management
+  hosts: molecule
+  vars:
+    ci_target_version: "27.1"
+    ansible_user: molecule_runner
+  tasks:
+    - name: Get docker service original start time
+      ansible.builtin.command:
+        cmd: "systemctl show -p ActiveEnterTimestamp docker"
+      changed_when: false
+      register: __ci_docker_service_original_start_timestamp_raw
+
+    - name: Run docker role with no-restart flag
+      ansible.builtin.include_role:
+        name: docker_engine
+      vars:
+        docker_engine_package_version:  "{{ ci_target_version }}"
+        docker_engine_package_state: latest
+        docker_engine_allow_restart: false
+
+    - name: Get docker service current start time
+      ansible.builtin.command:
+        cmd: "systemctl show -p ActiveEnterTimestamp docker"
+      changed_when: false
+      register: __ci_docker_service_current_start_timestamp_raw
+
+    - name: Verify service uptime
+      ansible.builtin.assert:
+        that:
+          - __ci_docker_service_original_start_timestamp_raw.stdout == __ci_docker_service_current_start_timestamp_raw.stdout
+        fail_msg: "Service was restarted"
+        success_msg: "Service was not restarted"
+
+    - name: Run docker role with latest and no restart flag
+      ansible.builtin.include_role:
+        name: docker_engine
+      vars:
+        docker_engine_package_version:  "{{ ci_target_version }}"
+        docker_engine_package_state: latest
+        docker_engine_allow_restart: false
+
+    - name: Get docker service current start time
+      ansible.builtin.command:
+        cmd: "systemctl show -p ActiveEnterTimestamp docker"
+      changed_when: false
+      register: __ci_docker_service_current_start_timestamp_raw
+
+    - name: Verify service uptime
+      ansible.builtin.assert:
+        that:
+          - __ci_docker_service_original_start_timestamp_raw.stdout == __ci_docker_service_current_start_timestamp_raw.stdout
+        fail_msg: "Service was restarted"
+        success_msg: "Service was not restarted"
+
+- name: Verify Docker Removal
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+  tasks:
+    - name: Remove docker
+      ansible.builtin.include_role:
+        name: docker_engine
+      vars:
+        docker_engine_package_state: absent
+
+    - name: Check that we can't run docker
+      become: true
+      ansible.builtin.command:
+        cmd: "docker --version"
+      register: __ci_docker_version_raw
+      failed_when: false
+
+    - name: 🪱 Show docker command output
+      ansible.builtin.debug:
+        var: __ci_docker_version_raw
+        verbosity: 1
+
+    - name: Docker is not installed
+      ansible.builtin.assert:
+        that:
+          - "'No such file or directory' in __ci_docker_version_raw.msg"
+        fail_msg: "Docker is still installed"
+        success_msg: "Docker is not installed"
+
