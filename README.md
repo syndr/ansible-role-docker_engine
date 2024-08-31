@@ -1,5 +1,7 @@
 # Ansible Role: Docker
 
+[![Role - system](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-system.yml/badge.svg)](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-system.yml)
+
 ## Overview
 
 This Ansible role facilitates the automated setup and management of Docker environments on various Linux distributions. It encompasses the installation, configuration, and management aspects of Docker, ensuring a seamless and secure Docker experience.
@@ -94,7 +96,7 @@ docker_engine_users: []
 
 **'latest' versus 'present'**
 
-The `docker_engine_package_state` variable can be set to 'latest' or 'present'. When set to 'latest', the package manager will attempt to install the latest version of the Docker package available. When set to 'present', the package manager will install the version specified in the `docker_engine_package_version` variable _only_ if no existing version of docker is discovered. To guarantee that a version of docker matching the specified version number is installed, set `docker_engine_package_state` to 'latest'.
+The `docker_engine_package_state` variable can be set to 'latest' or 'present'. When set to 'latest', the package manager will attempt to install the latest version of the Docker package available that *matches the value* of `docker_engine_package_version`. When set to 'present', the package manager will install the version specified in the `docker_engine_package_version` variable _only_ if no existing version of docker is discovered. To guarantee that a version of docker matching the specified version number is installed, set `docker_engine_package_state` to 'latest'.
 
 ## Requirements
 
