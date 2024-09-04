@@ -1,6 +1,6 @@
 # Ansible Role: Docker
 
-[![Role - system](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-system.yml/badge.svg)](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-system.yml)
+[![Role - system](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-docker_engine.yml/badge.svg)](https://github.com/syndr/ansible-role-docker_engine/actions/workflows/role-docker_engine.yml)
 
 ## Overview
 
