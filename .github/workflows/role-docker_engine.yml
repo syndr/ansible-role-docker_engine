@@ -7,12 +7,12 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/role-system.yml'
+      - '.github/workflows/role-docker_engine.yml'
       - './**'
       - '!*.md'
 
 jobs:
-  manage-system:
+  manage-docker_engine:
     name: "Role: docker_engine"
     strategy:
       max-parallel: 4
