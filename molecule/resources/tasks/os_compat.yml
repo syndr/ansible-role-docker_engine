@@ -13,8 +13,11 @@
       - '!all'
       - '!min'
       - distribution
+      - pkg_mgr
     filter:
       - ansible_distribution*
+      - ansible_os*
+      - ansible_pkg_mgr
 
 - name: Set legacy OS vars
   when: >

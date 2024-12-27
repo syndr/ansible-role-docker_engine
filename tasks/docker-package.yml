@@ -9,7 +9,7 @@
     success_msg: "Package manager found: {{ ansible_pkg_mgr }}"
 
 - name: Discover existing installs
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_version.yml"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/get-existing.yml"
 
 - name: Prepare for package install
   block:
@@ -20,100 +20,80 @@
     - name: Docker package name is known
       ansible.builtin.assert:
         that:
-          - docker_engine_package is defined
-          - docker_engine_package != "DEFAULT"
+          - docker_engine_package is truthy
         fail_msg: "Docker package name is not known! Config may need to be added to docker_engine role for this OS"
         success_msg: "Docker package name is known: {{ docker_engine_package }}"
-
-    - name: Package upgrade is needed
-      when:
-        - __docker_engine_installed_version is truthy
-        - (docker_engine_package_version is version_compare(__docker_engine_installed_version, '>') if docker_engine_package_state == 'latest' else false)
-        - (docker_engine_package_version not in __docker_engine_installed_version if docker_engine_package_state == 'present' else false)
-        - docker_engine_package_state != 'absent'
-      ansible.builtin.assert:
-        that:
-          - docker_engine_allow_restart is true
-        fail_msg: "Upgrading Docker requires a service restart! Set docker_engine_allow_restart to true to allow \
-                   {{ __docker_engine_installed_version }} --> {{ docker_engine_package_version }}."
-        success_msg: "Upgrading Docker is allowed."
-
-    - name: Package downgrade needed
-      when:
-        - __docker_engine_installed_version is truthy
-        - (docker_engine_package_version is version_compare(__docker_engine_installed_version, '<')
-          if docker_engine_package_version not in __docker_engine_installed_version else false)
-        - docker_engine_package_state != 'absent'
-      ansible.builtin.assert:
-        that:
-          - docker_engine_allow_downgrade is true
-        fail_msg: "Downgrading Docker is not allowed! Set docker_engine_allow_downgrade to true to allow \
-                   {{ __docker_engine_installed_version }} --> {{ docker_engine_package_version }}."
-        success_msg: "Downgrading Docker is allowed."
-
-    # The 'present' filter will just look at the package name -- force updating to a valid version
-    #  if service restarting is allowed
-    - name: Enable package version update
-      ansible.builtin.set_fact:
-        docker_engine_package_state: "latest"
-      when:
-        - docker_engine_package_state == "present"
-        - docker_engine_package_version not in __docker_engine_installed_version
-        - docker_engine_allow_restart is true
 
 - name: Manage docker packages
   block:
     - name: Manage Docker package for apt-based systems
+      when: ansible_pkg_mgr == 'apt'
       block:
-        # TODO: Add support for APT-based systems, including version locking
+        # TODO: Add support for APT-based systems, including version locking, to docker_engine role
         - name: APT configuration not currently supported
           ansible.builtin.fail:
             msg: "You get a 🍪 for adding support for APT-based systems!"
-      when: ansible_pkg_mgr == 'apt'
 
     - name: Manage Docker package for yum-based systems
+      when: ansible_pkg_mgr == 'yum'
       block:
         - name: Process version status
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-yum.yml"
           when: docker_engine_package_state != 'absent'
 
-        # This shouldn't be required for upgrades -- just downgrades
-        - name: Explicit package version required
-          ansible.builtin.set_fact:
-            __docker_engine_package_name: "{{ docker_engine_package }}-{{ __docker_engine_package_versions | last }}"
-          when:
-            - docker_engine_package_state != 'absent'
-            - docker_engine_package_version not in __docker_engine_installed_version
-            - docker_engine_allow_downgrade is true
-
         - name: Manage Docker package
+          when: __docker_engine_doinstall
           become: true
-          ansible.builtin.yum:
-            name: "{{ [__docker_engine_package_name | default(docker_engine_package, true)] + docker_engine_extra_packages }}"
-            state: "{{ docker_engine_package_state }}"
-            allow_downgrade: "{{ docker_engine_allow_downgrade }}"
-      when: ansible_pkg_mgr == 'yum'
+          vars:
+            __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
+            # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
+            __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
+          block:
+            - name: Manage Docker package (yum)
+              ansible.builtin.yum:
+                name: "{{ [__docker_engine_install_package_name] + docker_engine_extra_packages}}"
+                state: "{{ __docker_engine_request_pkg_mgr_state }}"
+                allow_downgrade: "{{ docker_engine_allow_downgrade }}"
+              register: __docker_engine_yum_result
+
+            # This is a hack to force the package to be installed if the module decides not to
+            - name: Force install docker package
+              when: __docker_engine_doinstall and __docker_engine_yum_result is not changed
+              become: true
+              ansible.builtin.shell:
+                cmd: "yum install -y {{ __docker_engine_install_package_name }}"
 
     - name: Install Docker for dnf-based systems
+      when: ansible_pkg_mgr == 'dnf'
       block:
         - name: Process version status
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-dnf.yml"
           when: docker_engine_package_state != 'absent'
 
-        # This shouldn't be required for upgrades -- just downgrades
-        - name: Explicit package version required
-          ansible.builtin.set_fact:
-            __docker_engine_package_name: "{{ docker_engine_package }}-{{ __docker_engine_package_versions | last }}"
-          when:
-            - docker_engine_package_state != 'absent'
-            - docker_engine_package_version not in __docker_engine_installed_version
-            - docker_engine_allow_downgrade is true
+        - name: Show target package name
+          ansible.builtin.debug:
+            var: docker_engine_package + '-' + __docker_engine_target_package_version
+            verbosity: 1
 
         - name: Manage Docker package
+          when: __docker_engine_doinstall
           become: true
-          ansible.builtin.dnf:
-            name: "{{ [__docker_engine_package_name | default(docker_engine_package, true)] + docker_engine_extra_packages }}"
-            state: "{{ docker_engine_package_state }}"
-            allow_downgrade: "{{ docker_engine_allow_downgrade }}"
-      when: ansible_pkg_mgr == 'dnf'
+          vars:
+            __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
+            # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
+            __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
+          block:
+            - name: Manage Docker package (dnf)
+              ansible.builtin.dnf:
+                name: "{{ [__docker_engine_install_package_name] + docker_engine_extra_packages}}"
+                state: "{{ __docker_engine_request_pkg_mgr_state }}"
+                allow_downgrade: "{{ docker_engine_allow_downgrade }}"
+              register: __docker_engine_dnf_result
+
+            # This is a hack to force the package to be installed if the module decides not to
+            - name: Force install docker package
+              when: __docker_engine_doinstall and __docker_engine_dnf_result is not changed
+              become: true
+              ansible.builtin.shell:
+                cmd: "dnf install -y {{ __docker_engine_install_package_name }}"
 

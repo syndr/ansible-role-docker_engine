@@ -6,25 +6,19 @@ driver:
   name: default
   options:
     managed: true
-    login_cmd_template: 'docker exec -ti {instance} bash'
 platforms:
-  - name: role-docker_engine-docker-rockylinux9
-    type: docker
-    image: geerlingguy/docker-rockylinux9-ansible:latest
-    systemd: True
-    modify_image: False
-    privileged: True
+  - name: role-docker_engine-ec2-al2
+    type: ec2
+    image: ami-028bd07c62e764718
+    region: us-west-2
+    instance_type: t3.micro
+    ssh_user: molecule_runner
+    vpc_id: vpc-07bd460b98a3fb162
+    vpc_subnet_id: subnet-018b2c7fdd47921c2
+    boot_wait_seconds: 10
     hostvars:
       ci_docker_low_version: "20.10"
       ci_docker_high_version: "25.0"
-
-  #- name: role-docker_engine-ubuntu2204
-  #  type: docker
-  #  image: geerlingguy/docker-ubuntu2204-ansible:latest
-  #  systemd: True
-  #  modify_image: False
-  #  privileged: True
-  #  hostvars: {}
 provisioner:
   name: ansible
   log: True

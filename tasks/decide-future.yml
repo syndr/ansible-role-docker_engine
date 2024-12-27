@@ -1,0 +1,95 @@
+---
+# Pick the next package version, and decide if it should be installed.
+#
+# Expected input:
+#  - __docker_engine_package_versions: List of available package versions, sorted in ascending order
+#  - __docker_engine_installed_version: The installed version of docker (if any)
+#  - __docker_engine_installed_pkg_version: Full version of the package manager package that is installed
+#  - docker_engine_package_version: The desired version of docker
+#
+# Output:
+#  - __docker_engine_target_package_version: The version to install
+#
+
+
+- name: Validate discovered packages
+  ansible.builtin.assert:
+    that:
+      - __docker_engine_package_versions | length > 0
+      - __docker_engine_installed_version is defined
+      - __docker_engine_installed_pkg_version is defined
+      - ((__docker_engine_installed_pkg_version is truthy) if __docker_engine_installed_version is truthy else true)
+      - docker_engine_package_version is truthy
+    fail_msg: "No matching Docker package versions found for {{ docker_engine_package_version }}"
+    success_msg: "Found matching Docker package versions: {{ __docker_engine_package_versions }}"
+
+- name: Show installed version (package manager)
+  ansible.builtin.debug:
+    var: __docker_engine_installed_pkg_version
+    verbosity: 1
+
+- name: Select target package version
+  ansible.builtin.set_fact:
+    __docker_engine_target_package_version: "{{ __docker_engine_package_versions | last }}"
+
+- name: Extract package version numbers
+  ansible.builtin.set_fact:
+    # For package names such as 'docker-25.0.6-1.amzn2.0.2' we need to extract the version numbers separately (main release version, and OS packaging version)
+    __docker_engine_target_package_version_primary: "{{ __docker_engine_target_package_version | regex_search('^((?:\\d+\\.?){3}(?:-\\d*)?)') | default('0.0.0', true) }}"
+    __docker_engine_target_package_version_secondary: "{{ __docker_engine_target_package_version | regex_search('((?:\\d+\\.?){3}$)') | default('0.0.0', true) }}"
+    __docker_engine_installed_pkg_version_primary: "{{ __docker_engine_installed_pkg_version | regex_search('^((?:\\d+\\.?){3}(?:-\\d*)?)') | default('0.0.0', true) }}"
+    __docker_engine_installed_pkg_version_secondary: "{{ __docker_engine_installed_pkg_version | regex_search('((?:\\d+\\.?){3}$)') | default('0.0.0', true) }}"
+
+- name: Docker version status is
+  ansible.builtin.debug:
+    msg: |
+      Latest matching version: {{ __docker_engine_target_package_version }}
+      Installed version: {{ __docker_engine_installed_version | default('none', true) }}
+      Installed package version: {{ __docker_engine_installed_pkg_version | default('none', true) }}
+      Desired version (mask): {{ docker_engine_package_version }}
+
+- name: Plan execution state
+  ansible.builtin.set_fact:
+    __docker_engine_doinstall: "{{
+        true if __docker_engine_installed_version is not truthy else
+        (false if not docker_engine_allow_restart else
+        (docker_engine_package_state == 'latest' and __docker_engine_target_package_version_primary is
+          version_compare(__docker_engine_installed_pkg_version_primary, '>', version_type='semver')) or
+        (docker_engine_package_state == 'latest' and __docker_engine_target_package_version_primary is
+          version_compare(__docker_engine_installed_pkg_version_primary, 'eq', version_type='semver') and
+          (__docker_engine_target_package_version_secondary is version_compare(__docker_engine_installed_pkg_version_secondary, '>', version_type='semver')) or
+        (docker_engine_package_state == 'present' and __docker_engine_installed_version | regex_search('^' + docker_engine_package_version + '.*$') is falsy)))
+      }}"
+
+- name: Do ok-to-continue validations
+  vars:
+    __docker_engine_doinstall_downgrade: >
+      {{ (__docker_engine_target_package_version_primary is version_compare(__docker_engine_installed_pkg_version_primary, '<', version_type='semver') or
+        __docker_engine_target_package_version_primary is version_compare(__docker_engine_installed_pkg_version_primary, 'eq', version_type='semver') and
+        __docker_engine_target_package_version_secondary is version_compare(__docker_engine_installed_pkg_version_secondary, '<', version_type='semver'))
+      if (__docker_engine_doinstall and __docker_engine_installed_version is truthy) else false }}
+  block:
+    - name: Validate downward trajectories
+      when: __docker_engine_doinstall_downgrade
+      ansible.builtin.assert:
+        that:
+          - docker_engine_allow_downgrade
+        fail_msg: "Downgrading Docker is not allowed! Set docker_engine_allow_downgrade to true to allow \
+                   {{ __docker_engine_installed_version }} --> {{ __docker_engine_target_package_version }}."
+        success_msg: >-
+          Downgrading Docker from version {{ __docker_engine_installed_pkg_version_primary }}{% if __docker_engine_installed_pkg_version_secondary != '0.0.0' %}-
+          {{ __docker_engine_installed_pkg_version_secondary }}{% endif %} to {{ __docker_engine_target_package_version_primary }}
+          {% if __docker_engine_target_package_version_secondary != '0.0.0' %}-{{ __docker_engine_target_package_version_secondary }}{% endif %} is allowed.
+
+    - name: Assert dominance
+      ansible.builtin.assert:
+        that:
+          - (__docker_engine_doinstall if __docker_engine_installed_version | regex_search('^' + docker_engine_package_version + '.*$') is falsy else true)
+        fail_msg: >
+          Version mask {{ docker_engine_package_version }} is not satisfied by installed version {{ __docker_engine_installed_version }}, but
+          modifications are not allowed! Check your version mask or set docker_engine_allow_restart {% if __docker_engine_doinstall_downgrade %}
+          and docker_engine_allow_downgrade {% endif %}to true.
+        success_msg: >
+          Version mask {{ docker_engine_package_version }} is satisfied by{% if not __docker_engine_doinstall %}
+          installed version {{ __docker_engine_installed_version }} {% else %} target version {{ __docker_engine_target_package_version }}{% endif %}.
+

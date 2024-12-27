@@ -6,4 +6,6 @@
   ansible.builtin.service:
     name: docker
     state: "{{ docker_engine_restart_handler_state }}"
-  when: docker_engine_service_manage | bool
+  when:
+    - docker_engine_service_manage | bool
+    - docker_engine_allow_restart | bool

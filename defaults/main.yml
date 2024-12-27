@@ -14,15 +14,13 @@ docker_engine_auths_allow_failed: false
 # The Docker daemon options to set in /etc/docker/daemon.json
 # - The options are set as key-value pairs in a dictionary
 docker_engine_daemon_options:
-  docker_daemon_options:
-    log-driver: "json-file"
-    log-opts:
-      max-size: "20m"
-      max-file: "2"
+  log-driver: "json-file"
+  log-opts:
+    max-size: "20m"
+    max-file: "2"
 
 # The name of the Docker application package in the system  package manager
-#  - Set to 'DEFAULT' to use the default package name for the system, if available
-docker_engine_package: DEFAULT
+docker_engine_package: "{{ __docker_engine_compat_package_name | default(none) }}"
 
 # The version of the Docker application package to install
 #  - Both specific version numbers such as "20.10.25-1.amzn2.0.3" and nonspecific
@@ -31,7 +29,7 @@ docker_engine_package: DEFAULT
 #    that matches the nonspecific version number will be installed.
 #     - If an applicable version is already installed (IE: "20.10.25-1.amzn2.0.3"), and package state
 #       is set to 'present', the installed version will be left as is.
-docker_engine_package_version: "27"
+docker_engine_package_version: "25.0"
 
 # The state of the Docker application package (present/absent/latest)
 #  - present: The package will be installed

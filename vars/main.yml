@@ -1,7 +1,14 @@
 ---
 # vars file for Docker
 
-# Explicit package name with version number
-# Should only be relevant on package downgrade request
-__docker_engine_package_name: ""
+# Docker package names for different distributions
+__docker_engine_compat_package_names:
+  amazon: docker
+  centos: docker-ce
+  fedora: docker-ce
+  rocky: docker-ce
+  default: docker
+
+# Name of docker package as available in the distribution's package manager
+__docker_engine_compat_package_name: "{{ __docker_engine_compat_package_names[ansible_distribution | lower] | default(__docker_engine_compat_package_names['default']) }}"
 
