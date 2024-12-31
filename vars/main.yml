@@ -1,5 +1,7 @@
 ---
 # vars file for Docker
+#
+# WARNING: Internal variables - do not modify at runtime!
 
 # Docker package names for different distributions
 __docker_engine_compat_package_names:
@@ -9,6 +11,19 @@ __docker_engine_compat_package_names:
   rocky: docker-ce
   default: docker
 
+# System package-manager package name for iptables-nft shim
+__docker_engine_compat_nftables_shim_package_names:
+  rocky: iptables-nft
+  fedora: iptables-nft
+  default: iptables-nft
+
 # Name of docker package as available in the distribution's package manager
 __docker_engine_compat_package_name: "{{ __docker_engine_compat_package_names[ansible_distribution | lower] | default(__docker_engine_compat_package_names['default']) }}"
+
+# Discovered Docker package versions available to the system
+__docker_engine_package_versions: []
+
+# Packages that shouldn't be uninstalled when removing Docker
+__docker_engine_remove_package_excludes:
+  - selinux-policy-targeted
 

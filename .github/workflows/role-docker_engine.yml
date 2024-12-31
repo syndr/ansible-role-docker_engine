@@ -3,6 +3,10 @@
 name: Role - system
 on:
   pull_request:
+    paths:
+      - '.github/workflows/role-docker_engine.yml'
+      - './**'
+      - '!*.md'
   push:
     branches:
       - main
@@ -10,6 +14,8 @@ on:
       - '.github/workflows/role-docker_engine.yml'
       - './**'
       - '!*.md'
+  schedule:
+    - cron: '13 13 * * *'
 
 jobs:
   manage-docker_engine:
@@ -21,6 +27,7 @@ jobs:
         python-version: ["3.12"]
         molecule-scenario:
           - role-docker_engine-docker
+          - role-docker_engine-ec2
 
     if: >
       (github.event_name == 'pull_request' ||

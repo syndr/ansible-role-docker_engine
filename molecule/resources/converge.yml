@@ -28,6 +28,7 @@
       ansible.builtin.include_role:
         name: docker_engine
       vars:
+        docker_engine_package_version: "{{ ci_docker_high_version }}"
         # Allow the role to modify the installed docker version to match its default configuration
         docker_engine_allow_downgrade: true
         docker_engine_allow_restart: true

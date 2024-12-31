@@ -61,6 +61,15 @@ docker_engine_restart_handler_state: restarted
 docker_engine_networks:
   - main
 
+# Utilize the iptables-nft shim for nftables support (true/false/AUTO)
+#  - This is only necessary on systems where nftables is the default firewall backend
+#  - System will be reconfigured for iptables --> iptables-nft using 'alternatives' if set to true
+docker_engine_use_nftables_shim: AUTO
+
+# Path to iptables binary
+#  Docker relies on deprecated iptables commands, see: https://github.com/docker/for-linux/issues/1472
+docker_engine_iptables_path: /usr/sbin/iptables
+
 # List of usernames that should be given access to docker
 docker_engine_users: []
 

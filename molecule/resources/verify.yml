@@ -7,25 +7,41 @@
     - name: Load OS compatibility settings
       ansible.builtin.include_tasks: tasks/os_compat.yml
 
+    - name: Load role internal configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../vars/main.yml"
+
     - name: Load role default configuration
-      ansible.builtin.set_fact:
-        __ci_role_defaults: "{{ lookup('file', playbook_dir + '/../../defaults/main.yml') | from_yaml }}"
-        __ci_role_internal_vars: "{{ lookup('file', playbook_dir + '/../../vars/main.yml') | from_yaml }}"
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../defaults/main.yml"
+        name: __ci_role_defaults
 
 - name: Verify system state
   hosts: molecule
   vars:
     ansible_user: molecule_runner
+    __ci_docker_compat_package_name: "{{ __ci_role_defaults.docker_engine_package }}"
   tasks:
-    - name: Load system services
-      ansible.builtin.service_facts:
+    - name: Load system facts
+      ansible.builtin.setup:
+        gather_subset:
+          - distribution
+          - pkg_mgr
+          - system
 
-    - name: Verify that docker service is running
-      ansible.builtin.assert:
-        that:
-          - ansible_facts.services['docker.service'].state | default('absent') == 'running'
-        fail_msg: "Docker service is not running"
-        success_msg: "Docker service is running"
+    - name: Validate docker service state
+      block:
+        # Privileged execution is required on some systems (Fedora 41+) to access the service facts
+        - name: Load system services
+          become: true
+          ansible.builtin.service_facts:
+
+        - name: Verify that docker service is running
+          ansible.builtin.assert:
+            that:
+              - ansible_facts.services['docker.service'].state | default('absent') == 'running'
+            fail_msg: "Docker service is not running"
+            success_msg: "Docker service is running"
 
     # User won't be able to run docker without sudo if the session hasn't been reset since the user was added to the 'docker' group
     - name: Force connection reset
@@ -61,9 +77,19 @@
 
         - name: Extract version lock information
           when: __ci_versionlock_list_raw.stdout is truthy
-          ansible.builtin.set_fact:
-            __ci_versionlock_list: >-
-              {{ __ci_versionlock_list_raw.stdout_lines | map('regex_search', '(.*)\.\*', '\1') | reject('none') | list }}
+          block:
+            - name: Parse version lock list (dnf)
+              when: ansible_pkg_mgr == 'dnf'
+              ansible.builtin.set_fact:
+                __ci_versionlock_list: >-
+                  {{ __ci_versionlock_list_raw.stdout_lines | map('regex_search', '(.*)\.\*', '\1') | reject('none') | list }}
+
+            - name: Parse version lock list (dnf5)
+              when: ansible_pkg_mgr == 'dnf5'
+              ansible.builtin.set_fact:
+                __ci_versionlock_list: >-
+                  {{ __ci_versionlock_list_raw.stdout | regex_findall('Package name: ' + __ci_docker_compat_package_name + '\n.*?evr = (.+?)$', multiline=True) |
+                  map('regex_replace', '\d+:', __ci_docker_compat_package_name + '-' ) | list }}
 
         - name: Docker package is version locked
           ansible.builtin.assert:
@@ -72,92 +98,54 @@
             fail_msg: "Docker package is not version locked"
             success_msg: "Docker package is version locked"
 
+        # Validate string parsing with multiple version locks
+        #  - next execution of role below should fail idempotence if version lock is not respected
+        - name: Add additional version locks
+          become: true
+          block:
+            - name: Add additional version lock (dnf)
+              when: ansible_pkg_mgr in ['dnf', 'dnf5']
+              community.general.dnf_versionlock:
+                state: present
+                name: bash
+
+            - name: Add additional version lock (yum)
+              when: ansible_pkg_mgr == 'yum'
+              community.general.yum_versionlock:
+                name: bash
+                state: present
+
 - name: Verify Docker Downgrade
   hosts: molecule
   vars:
     ci_target_version: "{{ ci_docker_low_version }}"
     ansible_user: molecule_runner
   tasks:
-    # We find all possible versions, so that we can pick and older one and test upgrade logic later
-    - name: Find oldest applicable version matching the mask (validate restart flags)
-      block:
-        # NOTE: This makes some assumptions about package naming -- more robust logic may need to be added for full distro support
-        - name: Load yum package list
-          when: ansible_pkg_mgr == 'yum'
-          vars:
-            __ci_package_name: docker
-          block:
-            - name: Find matching package names
-              ansible.builtin.command:
-                cmd: "yum --disableplugin=versionlock list --showduplicates {{ __ci_package_name }}"
-              register: __ci_package_list_raw
-              changed_when: false
+     - name: Downgrading docker to version
+       ansible.builtin.debug:
+         var: ci_target_version
 
-            - name: Extract applicable package versions
-              ansible.builtin.set_fact:
-                # Select only the lines that match the package name and version, and extract the version number
-                __ci_package_versions: "{{ __ci_package_list_raw.stdout_lines |
-                  map('regex_search', '(\\s*' ~ __ci_package_name ~ '.*\\s\\d?\\:?)(.*' ~ ci_target_version ~ '\\S*)(.*)', '\\2') |
-                  flatten | community.general.version_sort }}"
+     - name: Install 2nd to latest version of docker, and give ci user docker permissions
+       ansible.builtin.include_role:
+         name: docker_engine
+       vars:
+         docker_engine_package_version: "{{ ci_target_version }}"
+         docker_engine_users:
+           - "{{ ansible_user }}"
+         docker_engine_allow_downgrade: true
 
-        - name: Load dnf package list
-          when: ansible_pkg_mgr == 'dnf'
-          vars:
-            __ci_package_name: docker-ce
-          block:
-            - name: Find matching package names
-              ansible.builtin.command:
-                cmd: "dnf list --showduplicates {{ __ci_package_name }}"
-              register: __ci_package_list_raw
-              changed_when: false
+     - name: Get the docker engine version
+       ansible.builtin.command:
+         cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+       register: __ci_docker_version_raw
+       changed_when: false
 
-            - name: Extract applicable package versions
-              ansible.builtin.set_fact:
-                # Select only the lines that match the package name and version, and extract the version number
-                __ci_package_versions: "{{ __ci_package_list_raw.stdout_lines |
-                  map('regex_search', '(\\s*' ~ __ci_package_name ~ '.*\\s\\d?\\:?)(.*' ~ ci_target_version ~ '\\S*)(.*)', '\\2') |
-                  flatten | community.general.version_sort }}"
-
-        - name: Load apt package list
-          when: ansible_pkg_mgr == 'apt'
-          ansible.builtin.fail:
-            msg: "Apt is not yet supported for this role! Add APT support and receive a 🍪!"
-
-    - name: Perform docker downgrade
-      vars:
-        # Get 2nd to latest version
-        __ci_target_package_versions: "{{ (__ci_package_versions | map('regex_search', '(^.*)-\\d+.*', '\\1')) }}"
-        __ci_target_package_version: "{{ __ci_package_versions | select('ne', __ci_package_versions | last) | flatten | last }}"
-      block:
-        - name: Downgrading docker to version
-          ansible.builtin.debug:
-            var: __ci_target_package_version
-
-        - name: Install version {{ __ci_target_package_version }} of docker, and give ci user docker permissions
-          ansible.builtin.include_role:
-            name: docker_engine
-          vars:
-            docker_engine_package_version: "{{ __ci_target_package_version }}"
-            docker_engine_users:
-              - "{{ ansible_user }}"
-            docker_engine_allow_downgrade: true
-
-        - name: Get the docker engine version
-          ansible.builtin.command:
-            cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
-          register: __ci_docker_version_raw
-          changed_when: false
-
-        - name: Docker downgrade was successful
-          vars:
-            # Strip out the distro release version info, if it exists -- separator in the string is assumed to be in the format of '-0:'
-            __ci_docker_package_version_short: "{{ __ci_target_package_version | regex_search('(^.*)-\\d+.*', '\\1') | default([]) | last }}"
-            __ci_docker_desired_version: "{{ __ci_docker_package_version_short | default(__ci_target_package_version, true) }}"
-          ansible.builtin.assert:
-            that:
-              - __ci_docker_desired_version in __ci_docker_version_raw.stdout | from_json
-            fail_msg: "The expected docker version ({{ __ci_target_package_version }}) is not installed"
-            success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
+     - name: Docker downgrade was successful
+       ansible.builtin.assert:
+         that:
+           - ci_target_version in __ci_docker_version_raw.stdout | from_json
+         fail_msg: "The expected docker version ({{ ci_target_version }}) is not installed"
+         success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
 
 - name: Validate state management
   hosts: molecule
@@ -167,6 +155,7 @@
   tasks:
     # Docker version is assumed to be < target version for these checks
     - name: Get docker service original start time
+      become: true
       ansible.builtin.command:
         cmd: "systemctl show -p ActiveEnterTimestamp docker"
       changed_when: false
@@ -176,7 +165,7 @@
       ansible.builtin.include_role:
         name: docker_engine
       vars:
-        docker_engine_package_version: "{{ ci_target_version }}"
+        docker_engine_package_version: "{{ ci_docker_low_version }}"
         docker_engine_package_state: present
         docker_engine_allow_restart: false
         # Include config change to make sure no-restart is respected
@@ -187,6 +176,7 @@
             max-file: "4"
 
     - name: Get docker service current start time
+      become: true
       ansible.builtin.command:
         cmd: "systemctl show -p ActiveEnterTimestamp docker"
       changed_when: false
@@ -199,15 +189,26 @@
         fail_msg: "Service was restarted"
         success_msg: "Service was not restarted"
 
-    - name: Run docker role with latest and no restart flag
-      ansible.builtin.include_role:
-        name: docker_engine
-      vars:
-        docker_engine_package_version:  "{{ ci_target_version }}"
-        docker_engine_package_state: latest
-        docker_engine_allow_restart: false
+    - name: Try not-allowed update
+      block:
+        - name: Run docker role with newer version and no-restart flag (should fail)
+          ansible.builtin.include_role:
+            name: docker_engine
+          vars:
+            docker_engine_package_version:  "{{ ci_target_version }}"
+            docker_engine_package_state: latest
+            docker_engine_allow_restart: false
+      rescue:
+        - name: Validate failure state
+          ansible.builtin.assert:
+            that:
+              - "ansible_failed_result | failed"
+              - ansible_failed_result.msg | regex_search('Version mask .* is not satisfied by installed version .*')
+            fail_msg: "Role allowed a non-allowed update"
+            success_msg: "Role did not allow a non-allowed update"
 
     - name: Get docker service current start time
+      become: true
       ansible.builtin.command:
         cmd: "systemctl show -p ActiveEnterTimestamp docker"
       changed_when: false
@@ -224,10 +225,8 @@
   hosts: molecule
   vars:
     ci_target_version: "{{ ci_docker_high_version }}"
-    ci_target_version_low: "{{ ci_docker_low_version }}"
     ansible_user: molecule_runner
-    __ci_docker_compat_package_name: "{{ __ci_role_internal_vars.__docker_engine_compat_package_names[ansible_distribution | lower] |
-      default(__ci_role_internal_vars.__docker_engine_compat_package_names['default']) }}"
+    __ci_docker_compat_package_name: "{{ __ci_role_defaults.docker_engine_package }}"
   tasks:
     - name: Verify 'latest' upgrade logic
       block:
@@ -255,7 +254,7 @@
           ansible.builtin.include_role:
             name: docker_engine
           vars:
-            docker_engine_package_version:  "{{ ci_target_version_low }}"
+            docker_engine_package_version:  "{{ ci_target_version }}"
             docker_engine_package_state: latest
             docker_engine_allow_restart: true
             docker_engine_users:
@@ -288,8 +287,11 @@
               ansible.builtin.assert:
                 that:
                   - __ci_docker_rpm_package_installed_raw.stdout | trim != __ci_docker_start_rpm_package_installed_raw.stdout | trim
-                  - ci_target_version_low in __ci_docker_version_raw.stdout | from_json
-                fail_msg: "The expected docker version change ({{ __ci_docker_start_version_raw.stdout | trim }} --> {{ ci_target_version_low }}) did not occurr!"
+                  - ci_target_version in __ci_docker_version_raw.stdout | from_json
+                fail_msg: >
+                  The expected docker version change ({{ __ci_docker_start_version_raw.stdout | trim }} --> {{ ci_target_version }}) did not occurr!
+                  Original version: {{ __ci_docker_start_version_raw.stdout | trim }}
+                  Current version: {{ __ci_docker_version_raw.stdout | from_json }}
                 success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
 
     - name: Install new major release version of docker

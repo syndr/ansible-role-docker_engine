@@ -5,6 +5,10 @@
 
 - name: Gather some host facts
   ansible.builtin.setup:
+    gather_subset:
+      - distribution
+      - pkg_mgr
+      - system
     filter:
       - 'ansible_distribution*'
       - 'ansible_pkg_mgr'
