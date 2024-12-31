@@ -36,5 +36,6 @@ jobs:
     with:
       scenario: ${{ matrix.molecule-scenario }}
       python-version: ${{ matrix.python-version }}
+      python-dependencies: "boto3[crt]"
     secrets: inherit
 

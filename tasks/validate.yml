@@ -1,6 +1,10 @@
 ---
 # Make sure the input data is sane
 
+- name: Show package version
+  ansible.builtin.debug:
+    var: docker_engine_package_version
+
 - name: Data types are valid
   ansible.builtin.assert:
     that:

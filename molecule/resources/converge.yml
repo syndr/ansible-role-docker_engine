@@ -24,6 +24,10 @@
     - name: Load OS compatibility settings
       ansible.builtin.include_tasks: tasks/os_compat.yml
 
+    - name: Show target high version
+      ansible.builtin.debug:
+        var: ci_docker_high_version
+
     - name: Load docker_engine role
       ansible.builtin.include_role:
         name: docker_engine
