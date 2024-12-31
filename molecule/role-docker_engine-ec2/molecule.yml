@@ -9,12 +9,12 @@ driver:
 platforms:
   - name: role-docker_engine-ec2-al2
     type: ec2
-    image: ami-028bd07c62e764718
-    region: us-west-2
+    image: ami-06744fbd0847bf4f5
+    region: us-east-2
     instance_type: t3.micro
     ssh_user: molecule_runner
-    vpc_id: vpc-07bd460b98a3fb162
-    vpc_subnet_id: subnet-018b2c7fdd47921c2
+    vpc_id: vpc-0eb9fd1391f4207ec
+    vpc_subnet_id: subnet-0aa189c0d6fc53923
     boot_wait_seconds: 10
     hostvars:
       ci_docker_low_version: "20.10"
