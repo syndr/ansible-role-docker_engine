@@ -1,6 +1,6 @@
 ---
 
-name: Role - system
+name: Role - docker_engine
 on:
   pull_request:
     paths:

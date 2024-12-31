@@ -6,7 +6,7 @@
   tasks:
     - name: Launch provisioner
       ansible.builtin.include_role:
-        name: influxdata.molecule.init
+        name: syndr.molecule.init
       vars:
         # Supported platform types are: docker, ec2
         init_platform_type: ec2
