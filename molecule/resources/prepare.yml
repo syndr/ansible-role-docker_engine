@@ -14,6 +14,9 @@
   hosts: molecule
   tags: always
   tasks:
+    - name: Load OS compatibility settings
+      ansible.builtin.include_tasks: tasks/os_compat.yml
+
     ##
     # Creating an admin service account for Molecule/Ansible to use for testing
     #
@@ -97,13 +100,6 @@
                   - vim
                   - bind-utils
                 state: present
-
-            - name: Install pypy python interpreter for Ansible
-              ansible.builtin.include_role:
-                name: python_standalone
-
-    - name: Load OS compatibility settings
-      ansible.builtin.include_tasks: tasks/os_compat.yml
 
     - name: Python requests library is installed
       become: true

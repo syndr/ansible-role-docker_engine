@@ -1,4 +1,5 @@
 ---
 
-roles: []
+roles:
+  - syndr.python_standalone
 

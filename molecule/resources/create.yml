@@ -20,37 +20,51 @@
   hosts: molecule
   gather_facts: false
   tasks:
-    - name: Check uname
-      ansible.builtin.raw: uname -a
-      register: result
+    - name: Query current OS
+      ansible.builtin.raw: grep -E '^ID=' /etc/os-release | awk -F= '{print $2}' | tr -d '"'
+      register: __ci_os_release_raw
       changed_when: false
 
-    - name: Display uname info
+    - name: Query OS version id
+      ansible.builtin.raw: grep -E '^VERSION_ID=' /etc/os-release | awk -F= '{print $2}' | tr -d '"'
+      register: __ci_os_version_raw
+      changed_when: false
+
+    - name: Set OS type facts
+      ansible.builtin.set_fact:
+        __ci_os_type: "{{ __ci_os_release_raw.stdout | default('') | trim | lower }}"
+        __ci_os_version: "{{ __ci_os_version_raw.stdout | default('') | trim }}"
+
+    - name: 🐜 Show detected OS type
       ansible.builtin.debug:
-        msg: "{{ result.stdout }}"
+        msg: "Detected OS type: {{ __ci_os_type }} {{ __ci_os_version }}"
 
-    - name: Load system facts
-      ansible.builtin.setup:
-        gather_subset:
-          - '!all'
-          - '!min'
-          - distribution
-          - service_mgr
-        filter:
-          - ansible_service_mgr
-          - ansible_distribution*
-
-    - name: Check on Systemd
-      when: ansible_service_mgr == 'systemd'
+    - name: Do things for systems with real python
+      # Ansible requires minimum python 2.8
+      when: not (__ci_os_type == 'amzn' and __ci_os_version == '2')
       block:
-        - name: Wait for systemd to complete initialization.
-          ansible.builtin.command: systemctl is-system-running
-          register: systemctl_status
-          until: >
-            'running' in systemctl_status.stdout or
-            'degraded' in systemctl_status.stdout
-          retries: 30
-          delay: 5
-          changed_when: false
-          failed_when: systemctl_status.rc > 1
+        - name: Load system facts
+          ansible.builtin.setup:
+            gather_subset:
+              - '!all'
+              - '!min'
+              - distribution
+              - service_mgr
+            filter:
+              - ansible_service_mgr
+              - ansible_distribution*
+
+        - name: Check on Systemd
+          when: ansible_service_mgr == 'systemd'
+          block:
+            - name: Wait for systemd to complete initialization.
+              ansible.builtin.command: systemctl is-system-running
+              register: systemctl_status
+              until: >
+                'running' in systemctl_status.stdout or
+                'degraded' in systemctl_status.stdout
+              retries: 30
+              delay: 5
+              changed_when: false
+              failed_when: systemctl_status.rc > 1
 

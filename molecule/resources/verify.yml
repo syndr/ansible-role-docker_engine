@@ -4,9 +4,6 @@
 - name: Prepare for verification
   hosts: molecule
   tasks:
-    - name: Load OS compatibility settings
-      ansible.builtin.include_tasks: tasks/os_compat.yml
-
     - name: Load role internal configuration
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../../vars/main.yml"
@@ -22,6 +19,9 @@
     ansible_user: molecule_runner
     __ci_docker_compat_package_name: "{{ __ci_role_defaults.docker_engine_package }}"
   tasks:
+    - name: Load OS compatibility settings
+      ansible.builtin.include_tasks: tasks/os_compat.yml
+
     - name: Load system facts
       ansible.builtin.setup:
         gather_subset:
@@ -79,7 +79,7 @@
           when: __ci_versionlock_list_raw.stdout is truthy
           block:
             - name: Parse version lock list (dnf)
-              when: ansible_pkg_mgr == 'dnf'
+              when: ansible_pkg_mgr in ['dnf', 'yum']
               ansible.builtin.set_fact:
                 __ci_versionlock_list: >-
                   {{ __ci_versionlock_list_raw.stdout_lines | map('regex_search', '(.*)\.\*', '\1') | reject('none') | list }}
