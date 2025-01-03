@@ -61,15 +61,6 @@
             group: root
             mode: 0600
 
-    - name: Load host facts
-      ansible.builtin.setup:
-        gather_subset:
-          - '!all'
-          - '!min'
-          - distribution
-        filter:
-          - ansible_distribution*
-
     - name: Set up legacy system packages
       when: >
         ansible_distribution == "Amazon" and ansible_distribution_major_version == "2" or

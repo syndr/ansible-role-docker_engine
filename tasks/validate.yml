@@ -58,3 +58,10 @@
       ansible.builtin.set_fact:
         docker_engine_use_nftables_shim: true
 
+    - name: Nftables shim is not required
+      when:
+        - docker_engine_use_nftables_shim == 'AUTO'
+        - __docker_engine_iptables_version_check.rc == 0
+      ansible.builtin.set_fact:
+        docker_engine_use_nftables_shim: false
+
