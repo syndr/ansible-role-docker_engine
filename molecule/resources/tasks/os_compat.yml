@@ -40,9 +40,9 @@
       ansible.builtin.set_fact:
         ansible_python_interpreter: /usr/local/bin/python3.10
 
-    - name: Load host facts
-      ansible.builtin.setup:
-        gather_subset:
-          - distribution
-          - pkg_mgr
+- name: Load host facts
+  ansible.builtin.setup:
+    gather_subset:
+      - distribution
+      - pkg_mgr
 
