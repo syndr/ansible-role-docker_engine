@@ -26,7 +26,7 @@
       - docker_engine_package_state in ['present', 'latest', 'absent']
       - docker_engine_service_state in ['started', 'stopped', 'restarted']
       - docker_engine_restart_handler_state in ['started', 'stopped', 'restarted']
-      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$')
+      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$') is truthy
     fail_msg: "Invalid state in input data. Check your configuration data."
     success_msg: "States are within accepted values"
 
