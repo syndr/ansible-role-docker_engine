@@ -38,7 +38,6 @@
     #  if the config.json file is incorrect formatted (Eg. padding, chars, vars) then docker login will fail
     #  perhaps wiping the file and restarting this process would be a solution for badly formatted files, otherwise
     #  having a method that can skip that specific logins would be nice to have
-    #  https://github.com/influxdata/sre-ops/issues/457
 
     # Doing so this way instead of in a loop as it avoids exposing credentials in the logs
     - name: Collect failure messages

@@ -6,7 +6,6 @@ driver:
   name: default
   options:
     managed: true
-    login_cmd_template: 'docker exec -ti {instance} bash'
 platforms:
   - name: role-docker_engine-ec2-rocky10
     type: ec2
@@ -50,12 +49,9 @@ provisioner:
       playbook_vars_root: top
       verbosity: ${ANSIBLE_VERBOSITY:-0}
   env:
-    # Ansible paths will be set by setup-molecule-dependencies.sh script
-    # Default fallback paths if script hasn't run yet
-    ANSIBLE_ROLES_PATH: /usr/share/ansible/roles:/etc/ansible/roles:${PWD}/molecule/resources/.ansible-${GITHUB_RUN_ID:-local}-${GITHUB_JOB:-dev}/roles:${MOLECULE_PROJECT_DIRECTORY}/../../roles
-    ANSIBLE_COLLECTIONS_PATH: /usr/share/ansible/collections:${PWD}/molecule/resources/.ansible-${GITHUB_RUN_ID:-local}-${GITHUB_JOB:-dev}:${MOLECULE_PROJECT_DIRECTORY}/../../collections
+    ANSIBLE_ROLES_PATH: /usr/share/ansible/roles:/etc/ansible/roles:${MOLECULE_PROJECT_DIRECTORY}/.ansible/roles:${HOME}/.ansible/roles
+    ANSIBLE_COLLECTIONS_PATH: /usr/share/ansible/collections:${MOLECULE_PROJECT_DIRECTORY}/.ansible/collections:${HOME}/.ansible/collections
 
-    ## ARA configuration
     ARA_API_CLIENT: ${ARA_API_CLIENT:-'http'}
     ARA_API_SERVER: ${ARA_API_SERVER:-'http://localhost:8000'}
     ARA_DEFAULT_LABELS: ${ARA_DEFAULT_LABELS:-'testing,molecule,docker_engine,docker'}

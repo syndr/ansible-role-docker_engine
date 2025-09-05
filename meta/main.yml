@@ -29,9 +29,20 @@ galaxy_info:
   # https://galaxy.ansible.com/api/v1/platforms/
   #
   platforms:
+    - name: Fedora
+      versions:
+        - 42
     - name: Rocky
       versions:
         - 9
+        - 10
+    - name: Amazon
+      versions:
+        - 2
+        - 2023
+    - name: Ubuntu
+      versions:
+        - 24.04
 
   galaxy_tags:
     - docker

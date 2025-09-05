@@ -6,7 +6,7 @@
   tasks:
     - name: Configure for standalone role testing
       ansible.builtin.include_role:
-        name: influxdata.molecule.prepare_controller
+        name: syndr.molecule.prepare_controller
       vars:
         prepare_controller_project_type: role
 
@@ -14,18 +14,8 @@
   hosts: molecule
   tags: always
   tasks:
-    ##
-    # Creating an admin service account for Molecule/Ansible to use for testing
-    #
-    #   - If you run Ansible as a service account (you should) on your hosts and
-    #     not as root, it is wise to also test as a non-root user!
-    #
-    #   - To use this account, add the following to any plays targeting test
-    #     infrastructure (such as in converge.yml):
-    #
-    #         vars:
-    #           ansible_user: molecule_runner
-    ##
+    - name: Load OS compatibility settings
+      ansible.builtin.include_tasks: tasks/os_compat.yml
 
     - name: Create ansible service account
       vars:
@@ -58,15 +48,6 @@
             group: root
             mode: 0600
 
-    - name: Load host facts
-      ansible.builtin.setup:
-        gather_subset:
-          - '!all'
-          - '!min'
-          - distribution
-        filter:
-          - ansible_distribution*
-
     - name: Set up legacy system packages
       when: >
         ansible_distribution == "Amazon" and ansible_distribution_major_version == "2" or
@@ -98,17 +79,22 @@
                   - bind-utils
                 state: present
 
-            - name: Install pypy python interpreter for Ansible
-              ansible.builtin.include_role:
-                name: python_standalone
-
-    - name: Load OS compatibility settings
-      ansible.builtin.include_tasks: tasks/os_compat.yml
+    - name: Install package prequisites (RHEL)
+      when:
+        - ansible_os_family == "RedHat"
+        - not (ansible_distribution == "Amazon" and ansible_distribution_major_version == "2")
+      become: true
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-pip
+          - nftables  # These are the userland tools for nftables
+        state: present
 
     - name: Python requests library is installed
       become: true
       ansible.builtin.pip:
-        # Requests 2.32.0 has a docker incompatibility -- see https://github.com/influxdata/team-cloud1-engineering/issues/564
-        name: requests<2.32
+        # Requests 2.32.0 has a docker incompatibility
+        name: requests>2.32.0
         state: present
 
