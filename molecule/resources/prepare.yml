@@ -97,4 +97,3 @@
         # Requests 2.32.0 has a docker incompatibility
         name: requests>2.32.0
         state: present
-

@@ -30,7 +30,7 @@
       - docker_engine_package_state in ['present', 'latest', 'absent']
       - docker_engine_service_state in ['started', 'stopped', 'restarted']
       - docker_engine_restart_handler_state in ['started', 'stopped', 'restarted']
-      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$')
+      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$') is truthy
     fail_msg: "Invalid state in input data. Check your configuration data."
     success_msg: "States are within accepted values"
 
@@ -39,8 +39,8 @@
     # Docker relies on deprecated iptables commands, see: https://github.com/docker/for-linux/issues/1472
     - name: Test iptables command
       ansible.builtin.command: "{{ docker_engine_iptables_path }} --version"
-      ignore_errors: true
       changed_when: false
+      failed_when: false
       register: __docker_engine_iptables_version_check
 
     - name: Validate nftables shim config

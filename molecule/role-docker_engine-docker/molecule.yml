@@ -25,8 +25,8 @@ platforms:
     modify_image: False
     privileged: True
     hostvars:
-      ci_docker_low_version: "27.2"
-      ci_docker_high_version: "27.4"
+      ci_docker_low_version: "28.2"
+      ci_docker_high_version: "28.4"
 
   #- name: role-docker_engine-docker-amazon2023
   #  type: docker

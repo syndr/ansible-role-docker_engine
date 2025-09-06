@@ -128,22 +128,43 @@
       ansible.builtin.assert:
         that:
           - docker_engine_allow_downgrade
-        fail_msg: "Downgrading Docker is not allowed! Set docker_engine_allow_downgrade to true to allow \
-                   {{ __docker_engine_installed_version }} --> {{ __docker_engine_target_package_version }}."
+        fail_msg: >-
+          Downgrading Docker is not allowed!
+          Set docker_engine_allow_downgrade to true to allow
+          {{ __docker_engine_installed_version }} -->
+          {{ __docker_engine_target_package_version }}.
         success_msg: >-
-          Downgrading Docker from version {{ __docker_engine_installed_pkg_version_primary }}{% if __docker_engine_installed_pkg_version_secondary != '0.0.0' %}-
-          {{ __docker_engine_installed_pkg_version_secondary }}{% endif %} to {{ __docker_engine_target_package_version_primary }}
-          {% if __docker_engine_target_package_version_secondary != '0.0.0' %}-{{ __docker_engine_target_package_version_secondary }}{% endif %} is allowed.
+          Downgrading Docker from version
+          {{ __docker_engine_installed_pkg_version_primary }}
+          {% if __docker_engine_installed_pkg_version_secondary != '0.0.0' %}
+            -{{ __docker_engine_installed_pkg_version_secondary }}
+          {% endif %}
+          to {{ __docker_engine_target_package_version_primary }}
+          {% if __docker_engine_target_package_version_secondary != '0.0.0' %}
+            -{{ __docker_engine_target_package_version_secondary }}
+          {% endif %}
+          is allowed.
 
     - name: Assert dominance
       ansible.builtin.assert:
         that:
-          - (__docker_engine_doinstall if __docker_engine_installed_version | regex_search('^' + docker_engine_package_version + '.*$') is falsy else true)
-        fail_msg: >
-          Version mask {{ docker_engine_package_version }} is not satisfied by installed version {{ __docker_engine_installed_version }}, but
-          modifications are not allowed! Check your version mask or set docker_engine_allow_restart {% if __docker_engine_doinstall_downgrade %}
-          and docker_engine_allow_downgrade {% endif %}to true.
-        success_msg: >
-          Version mask {{ docker_engine_package_version }} is satisfied by{% if not __docker_engine_doinstall %}
-          installed version {{ __docker_engine_installed_version }} {% else %} target version {{ __docker_engine_target_package_version }}{% endif %}.
-
+          - (
+              __docker_engine_doinstall
+              if __docker_engine_installed_version | regex_search('^' + docker_engine_package_version + '.*$') is falsy
+              else true
+            )
+        fail_msg: >-
+          Version mask {{ docker_engine_package_version }} is not satisfied by installed version
+          {{ __docker_engine_installed_version }}, but modifications are not allowed!
+          Check your version mask or set docker_engine_allow_restart
+          {% if __docker_engine_doinstall_downgrade %}
+            and docker_engine_allow_downgrade
+          {% endif %}
+          to true.
+        success_msg: >-
+          Version mask {{ docker_engine_package_version }} is satisfied by
+          {% if not __docker_engine_doinstall %}
+            installed version {{ __docker_engine_installed_version }}
+          {% else %}
+            target version {{ __docker_engine_target_package_version }}
+          {% endif %}.
