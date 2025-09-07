@@ -34,22 +34,43 @@
     - name: Extract applicable package versions
       ansible.builtin.set_fact:
         # Select only the lines that match the package name and version, and extract the version number
-        __docker_engine_package_versions: "{{ __docker_engine_package_list_raw.stdout_lines |
-          map('regex_search', '(\\s*' ~ docker_engine_package ~ '.*\\s\\d?\\:?)(.*' ~ docker_engine_package_version ~ '\\S*)(.*)', '\\2') |
-          flatten | community.general.version_sort }}"
+        __docker_engine_package_versions: >-
+          {{
+            __docker_engine_package_list_raw.stdout_lines
+            | map('regex_search', '(\s*' ~ docker_engine_package ~ '.*\s\d?\:?)(.*' ~ docker_engine_package_version ~ '\S*)(.*)', '\2')
+            | flatten
+            | community.general.version_sort
+          }}
 
 - name: Calculate versioning
+  when: docker_engine_package_state != 'absent'
   vars:
-    __docker_engine_installed_pkg_version: "{{ __docker_engine_installed_pkg_raw.stdout | trim |
-      regex_search('(^' ~ docker_engine_package ~ '-)(.*)(?:\\.x86_64$)', '\\2') | first
-      if __docker_engine_installed_version is truthy else None }}"
+    __docker_engine_installed_pkg_version: >-
+      {{
+        __docker_engine_installed_pkg_raw.stdout
+        | trim
+        | regex_search('(^' ~ docker_engine_package ~ '-)(.*)(?:\.' ~ ansible_architecture ~ '$)', '\2')
+        | first
+        if __docker_engine_installed_version is truthy
+        else
+        None
+      }}
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/decide-future.yml"
   # Returns __docker_engine_target_package_version, __docker_engine_doinstall
+
+- name: Set install state for absent package state
+  when: docker_engine_package_state == 'absent'
+  ansible.builtin.set_fact:
+    __docker_engine_doinstall: false
+    __docker_engine_target_package_version: ""
 
 - name: Manage dnf versionlock config
   vars:
     __docker_engine_versionlock_package_name: >-
-      {{ docker_engine_package }}-{{ __docker_engine_target_package_version if __docker_engine_doinstall else __docker_engine_installed_version }}
+      {{ docker_engine_package }}-{{ __docker_engine_target_package_version
+          if __docker_engine_doinstall
+          else
+          __docker_engine_installed_version }}
   block:
     - name: Load current version lock
       ansible.builtin.command:
@@ -62,8 +83,11 @@
       when: ansible_pkg_mgr == 'dnf'
       ansible.builtin.set_fact:
         __docker_engine_versionlock_list: >-
-          {{ __docker_engine_versionlock_list_raw.stdout_lines | map('regex_search', '(.*)\.\*', '\1') | reject('none') |
-          map('regex_replace', '-\d+:', '-' ) | list }}
+          {{
+            __docker_engine_versionlock_list_raw.stdout_lines
+            | map('regex_search', '(.*)\.\*', '\1') | reject('none')
+            | map('regex_replace', '-\d+:', '-' ) | list
+          }}
 
     # Parse versionlock output to create a list of package names in the format of 'name-version', removing the distro-specific release number
     #  and adding the package name
@@ -71,8 +95,11 @@
       when: ansible_pkg_mgr == 'dnf5'
       ansible.builtin.set_fact:
         __docker_engine_versionlock_list: >-
-          {{ __docker_engine_versionlock_list_raw.stdout | regex_findall('Package name: ' + docker_engine_package + '\n.*?evr = (.+?)$', multiline=True) |
-          map('regex_replace', '\d+:', docker_engine_package + '-' ) | list }}
+          {{
+            __docker_engine_versionlock_list_raw.stdout
+            | regex_findall('Package name: ' + docker_engine_package + '\n.*?evr = (.+?)$', multiline=True)
+            | map('regex_replace', '\d+:', docker_engine_package + '-' ) | list
+          }}
 
     - name: Show versionlocked packages
       ansible.builtin.debug:
@@ -87,8 +114,12 @@
     - name: Do the versionlocking
       vars:
         __docker_engine_versionlock_dockers: "{{ __docker_engine_versionlock_list | select('search', docker_engine_package) }}"
-        __docker_engine_update_versionlock: "{{ __docker_engine_versionlock_list | select('search', __docker_engine_versionlock_package_name)
-          | length != 1 or __docker_engine_versionlock_dockers | length > 1 }}"
+        __docker_engine_update_versionlock: >-
+          {{
+            __docker_engine_versionlock_list
+            | select('search', __docker_engine_versionlock_package_name)
+            | length != 1 or __docker_engine_versionlock_dockers | length > 1
+          }}
       block:
         - name: 🦋 New version lock is required
           ansible.builtin.debug:
@@ -110,4 +141,3 @@
           community.general.dnf_versionlock:
             state: present
             name: "{{ __docker_engine_versionlock_package_name }}"
-

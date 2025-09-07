@@ -1,18 +1,15 @@
 ---
 
-- name: Validate configuration
-  ansible.builtin.include_tasks: validate.yml
-
 - name: Gather some host facts
   ansible.builtin.setup:
     gather_subset:
+      - architecture
       - distribution
       - pkg_mgr
       - system
-    filter:
-      - 'ansible_distribution*'
-      - 'ansible_pkg_mgr'
-      - 'ansible_architecture'
+
+- name: Validate configuration
+  ansible.builtin.include_tasks: validate.yml
 
 - name: Install Docker
   block:
@@ -50,7 +47,7 @@
         dest: /etc/docker/daemon.json
         mode: 0644
       when: docker_engine_daemon_options.keys() | length > 0
-      notify: restart docker
+      notify: Restart Docker
       # NOTE: Service restart will be skipped if 'docker_engine_allow_restart' is false (thus loading changes
       #         at the next service restart instead)
 

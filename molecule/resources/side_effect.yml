@@ -1,10 +1,52 @@
 ---
 # The side effect playbook executes actions which produce side effects to the instances(s). Intended to test HA failover scenarios or the like.
 
-- name: Test side effects
+- name: Prepare for verification
   hosts: molecule
   tasks:
-    - name: No side effect tests configured
-      ansible.builtin.debug:
-        msg: Add side-effect tests here!
+    - name: Load role internal configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../vars/main.yml"
 
+    - name: Load role default configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../defaults/main.yml"
+        name: __ci_role_defaults
+
+- name: Test version upgrade/downgrade logic
+  hosts: molecule
+  vars:
+    ansible_user: molecule_runner
+    __ci_docker_compat_package_name: "{{ __ci_role_defaults.docker_engine_package }}"
+  tasks:
+    - name: Downgrade docker version to {{ ci_docker_low_version }}
+      vars:
+        ci_target_version: "{{ ci_docker_low_version }}"
+      ansible.builtin.include_tasks: side-effects/version_downgrade.yml
+
+    - name: Verify service restart logic
+      vars:
+        ci_target_version: "{{ ci_docker_high_version }}"
+      ansible.builtin.include_tasks: side-effects/running_state.yml
+
+    # Validate string parsing with multiple version locks
+    #  - next execution of role below should fail idempotence if version lock is not respected
+    - name: Add additional version locks
+      become: true
+      block:
+        - name: Add additional version lock (dnf)
+          when: ansible_pkg_mgr in ['dnf', 'dnf5']
+          community.general.dnf_versionlock:
+            state: present
+            name: bash
+
+        - name: Add additional version lock (yum)
+          when: ansible_pkg_mgr == 'yum'
+          community.general.yum_versionlock:
+            name: bash
+            state: present
+
+    - name: Upgrade docker version to {{ ci_docker_high_version }}
+      vars:
+        ci_target_version: "{{ ci_docker_high_version }}"
+      ansible.builtin.include_tasks: side-effects/version_upgrade.yml

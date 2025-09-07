@@ -38,12 +38,19 @@
           flatten | community.general.version_sort }}"
 
 - name: Calculate versioning
+  when: docker_engine_package_state != 'absent'
   vars:
     __docker_engine_installed_pkg_version: "{{ __docker_engine_installed_pkg_raw.stdout | trim |
       regex_search('(^' ~ docker_engine_package ~ '-)(.*)(?:\\.x86_64$)', '\\2') | first
       if __docker_engine_installed_version is truthy else None }}"
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/decide-future.yml"
   # Returns __docker_engine_target_package_version, __docker_engine_doinstall
+
+- name: Set install state for absent package state
+  when: docker_engine_package_state == 'absent'
+  ansible.builtin.set_fact:
+    __docker_engine_doinstall: false
+    __docker_engine_target_package_version: ""
 
 - name: Manage yum versionlock config
   vars:

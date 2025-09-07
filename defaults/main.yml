@@ -27,8 +27,8 @@ docker_engine_package: "{{ __docker_engine_compat_package_name | default(none) }
 #    version numbers such as "20.10" are supported.
 #  - If a nonspecific version number is provided (IE: "20.10"), the latest version of the package
 #    that matches the nonspecific version number will be installed.
-#     - If an applicable version is already installed (IE: "20.10.25-1.amzn2.0.3"), and package state
-#       is set to 'present', the installed version will be left as is.
+#  - If an applicable version is already installed (IE: "20.10.25-1.amzn2.0.3"), and package state
+#    is set to 'present', the installed version will be left as is.
 docker_engine_package_version: "27"
 
 # The state of the Docker application package (present/absent/latest)

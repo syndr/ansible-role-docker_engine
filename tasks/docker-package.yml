@@ -40,10 +40,9 @@
       block:
         - name: Process version status
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-apt.yml"
-          when: docker_engine_package_state != 'absent'
 
         - name: Manage Docker package
-          when: __docker_engine_doinstall or docker_engine_package_state == 'absent'
+          when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
             __docker_engine_install_package_name: "{{ docker_engine_package }}={{ __docker_engine_target_package_version }}"
@@ -57,23 +56,33 @@
                 allow_downgrade: "{{ docker_engine_allow_downgrade }}"
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"
               register: __docker_engine_apt_result
+              notify: Restart Docker
 
             # This is a hack to force the package to be installed if the module decides not to
             - name: Force install docker package
-              when: __docker_engine_doinstall and __docker_engine_apt_result is not changed
+              when: (__docker_engine_doinstall) and __docker_engine_apt_result is not changed
               become: true
               ansible.builtin.shell:
                 cmd: "apt-get install -y {{ __docker_engine_install_package_name }}"
+              notify: Restart Docker
+
+            - name: Add new version hold - {{ __docker_engine_install_package_name }}
+              when:
+                - docker_engine_package_state != 'absent'
+                - __docker_engine_doinstall
+              become: true
+              ansible.builtin.dpkg_selections:
+                name: "{{ docker_engine_package }}"
+                selection: hold
 
     - name: Manage Docker package for yum-based systems
       when: ansible_pkg_mgr == 'yum'
       block:
         - name: Process version status
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-yum.yml"
-          when: docker_engine_package_state != 'absent'
 
         - name: Manage Docker package
-          when: __docker_engine_doinstall or docker_engine_package_state == 'absent'
+          when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
             __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
@@ -88,20 +97,21 @@
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"
                 exclude: "{{ __docker_engine_remove_package_excludes if docker_engine_package_state == 'absent' else [] }}"
               register: __docker_engine_yum_result
+              notify: Restart Docker
 
             # This is a hack to force the package to be installed if the module decides not to
             - name: Force install docker package
-              when: __docker_engine_doinstall and __docker_engine_yum_result is not changed
+              when: (__docker_engine_doinstall) and __docker_engine_yum_result is not changed
               become: true
               ansible.builtin.shell:
                 cmd: "yum install -y {{ __docker_engine_install_package_name }}"
+              notify: Restart Docker
 
     - name: Install Docker for dnf-based systems
       when: ansible_pkg_mgr in ['dnf', 'dnf5']
       block:
         - name: Process version status
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/versioning-dnf.yml"
-          when: docker_engine_package_state != 'absent'
 
         - name: Show target package name
           ansible.builtin.debug:
@@ -109,7 +119,7 @@
             verbosity: 1
 
         - name: Manage Docker package
-          when: __docker_engine_doinstall or docker_engine_package_state == 'absent'
+          when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
             __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
@@ -124,18 +134,27 @@
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"
                 exclude: "{{ __docker_engine_remove_package_excludes if docker_engine_package_state == 'absent' else [] }}"
               register: __docker_engine_dnf_result
+              notify: Restart Docker
 
             # This is a hack to force the package to be installed if the module decides not to
             - name: Force install docker package
-              when: __docker_engine_doinstall and __docker_engine_dnf_result is not changed
+              when: (__docker_engine_doinstall) and __docker_engine_dnf_result is not changed
               become: true
               ansible.builtin.shell:
                 cmd: "dnf install -y {{ __docker_engine_install_package_name }}"
+              notify: Restart Docker
+
+    - name: Get current iptables alternative
+      ansible.builtin.command: update-alternatives --display iptables
+      register: __docker_engine_iptables_alternatives
+      changed_when: false
+      failed_when: false
 
     - name: Utilize nftables shim package for system iptables compatibility
       when:
         - docker_engine_use_nftables_shim
         - docker_engine_package_state != 'absent'
+        - ('/usr/sbin/' ~ __docker_engine_nftables_shim_name) not in __docker_engine_iptables_alternatives.stdout
       become: true
       community.general.alternatives:
         name: iptables

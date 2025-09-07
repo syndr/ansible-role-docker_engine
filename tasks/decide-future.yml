@@ -157,14 +157,14 @@
           Version mask {{ docker_engine_package_version }} is not satisfied by installed version
           {{ __docker_engine_installed_version }}, but modifications are not allowed!
           Check your version mask or set docker_engine_allow_restart
-          {% if __docker_engine_doinstall_downgrade %}
+          {% if __docker_engine_doinstall_downgrade -%}
             and docker_engine_allow_downgrade
-          {% endif %}
+          {% endif -%}
           to true.
         success_msg: >-
           Version mask {{ docker_engine_package_version }} is satisfied by
-          {% if not __docker_engine_doinstall %}
+          {% if not __docker_engine_doinstall -%}
             installed version {{ __docker_engine_installed_version }}
-          {% else %}
+            {% else -%}
             target version {{ __docker_engine_target_package_version }}
           {% endif %}.

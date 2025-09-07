@@ -28,15 +28,15 @@ platforms:
       ci_docker_low_version: "28.2"
       ci_docker_high_version: "28.4"
 
-  #- name: role-docker_engine-docker-amazon2023
-  #  type: docker
-  #  image: geerlingguy/docker-amazonlinux2023-ansible:latest
-  #  systemd: True
-  #  modify_image: False
-  #  privileged: True
-  #  hostvars:
-  #    ci_docker_low_version: "20.10"
-  #    ci_docker_high_version: "24.0"
+  - name: role-docker_engine-docker-amazon2023
+    type: docker
+    image: geerlingguy/docker-amazonlinux2023-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    hostvars:
+      ci_docker_low_version: "20.10"
+      ci_docker_high_version: "24.0"
 
   - name: role-docker_engine-ubuntu2404
     type: docker

@@ -1,0 +1,84 @@
+---
+# Upgrade the docker package
+#
+
+- name: Verify 'latest' upgrade logic
+  block:
+    - name: Load current docker version
+      ansible.builtin.command:
+        cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+      register: __ci_docker_start_version_raw
+      changed_when: false
+
+    - name: Load current installed docker package
+      block:
+        - name: Load installed docker package (starting)
+          when: ansible_os_family | lower == 'redhat'
+          ansible.builtin.command:
+            cmd: rpm -q {{ __ci_docker_compat_package_name }}
+          register: __ci_docker_start_rpm_package_installed_raw
+          changed_when: false
+
+        - name: Load current installed docker package (apt)
+          when: ansible_os_family | lower == 'debian'
+          ansible.builtin.command:
+            cmd: dpkg-query --showformat='${Package}-${Version}' --show {{ __ci_docker_compat_package_name }}
+          register: __ci_docker_start_apt_package_installed_raw
+          changed_when: false
+
+    - name: Run docker role with latest flag (should upgrade)
+      ansible.builtin.include_role:
+        name: docker_engine
+      vars:
+        docker_engine_package_version:  "{{ ci_target_version }}"
+        docker_engine_package_state: latest
+        docker_engine_allow_restart: true
+        docker_engine_restart_handler_state: restarted
+        docker_engine_users:
+          - "{{ ansible_user }}"
+
+    - name: Get the docker engine version
+      ansible.builtin.command:
+        cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+      register: __ci_docker_version_raw
+      changed_when: false
+
+    - name: Verify upgrade status
+      vars:
+        __ci_docker_version_decreased: "{{ __ci_docker_start_version_raw.stdout is version(__ci_docker_version_raw.stdout, '<') }}"
+        __ci_docker_version_equal: "{{ __ci_docker_start_version_raw.stdout is version(__ci_docker_version_raw.stdout, '==') }}"
+      block:
+        - name: Load current installed docker package
+          when: ansible_os_family | lower == 'redhat'
+          ansible.builtin.command:
+            cmd: rpm -q {{ __ci_docker_compat_package_name }}
+          register: __ci_docker_rpm_package_installed_raw
+          changed_when: false
+
+        - name: Load current installed docker package (apt)
+          when: ansible_os_family | lower == 'debian'
+          ansible.builtin.command:
+            cmd: dpkg-query --showformat='${Package}-${Version}' --show {{ __ci_docker_compat_package_name }}
+          register: __ci_docker_apt_package_installed_raw
+          changed_when: false
+
+        - name: Verify package status
+          ansible.builtin.assert:
+            that:
+              - >-
+                (__ci_docker_rpm_package_installed_raw.stdout | default('') | trim != __ci_docker_start_rpm_package_installed_raw.stdout | default('') | trim)
+                or
+                (__ci_docker_apt_package_installed_raw.stdout | default('') | trim != __ci_docker_start_apt_package_installed_raw.stdout | default('') | trim)
+              - ci_target_version in __ci_docker_version_raw.stdout | from_json
+            fail_msg: |
+              The expected docker version change ({{ __ci_docker_start_version_raw.stdout | trim }} --> {{ ci_target_version }}) did not occurr!
+              Original version: {{ __ci_docker_start_version_raw.stdout | trim }}
+              Current version: {{ __ci_docker_version_raw.stdout | from_json }}
+            success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
+
+- name: Validate upgrade status
+  ansible.builtin.assert:
+    that:
+      - ci_target_version in __ci_docker_version_raw.stdout | from_json
+    fail_msg: "The expected docker version ({{ ci_target_version }}) is not installed"
+    success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"
