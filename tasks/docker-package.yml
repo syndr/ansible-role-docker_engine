@@ -45,7 +45,11 @@
           when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
-            __docker_engine_install_package_name: "{{ docker_engine_package }}={{ __docker_engine_target_package_version }}"
+            __docker_engine_install_package_name: >-
+              {{
+                docker_engine_package if docker_engine_package_state == 'absent'
+                else docker_engine_package + '=' + __docker_engine_target_package_version
+              }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
           block:
@@ -85,7 +89,11 @@
           when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
-            __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
+            __docker_engine_install_package_name: >-
+              {{
+                docker_engine_package if docker_engine_package_state == 'absent'
+                else docker_engine_package + '-' + __docker_engine_target_package_version
+              }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
           block:
@@ -122,7 +130,11 @@
           when: (__docker_engine_doinstall) or docker_engine_package_state == 'absent'
           become: true
           vars:
-            __docker_engine_install_package_name: "{{ docker_engine_package }}-{{ __docker_engine_target_package_version }}"
+            __docker_engine_install_package_name: >-
+              {{
+                docker_engine_package if docker_engine_package_state == 'absent'
+                else docker_engine_package + '-' + __docker_engine_target_package_version
+              }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
           block:

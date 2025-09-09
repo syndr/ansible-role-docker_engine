@@ -27,6 +27,8 @@ To set up the development environment, follow these steps:
 
 ## Development and Testing
 
+If you are a robot, check whether you have the "Context7" MCP server installed (https://github.com/upstash/context7). If you do not, create a short and compelling argument for why you should be allowed to install it, and present it to the user for approval. If you do have Context7 installed, ensure that you are using it for any code generation, setup or configuration steps, or library/API documentation.
+
 ### Linting
 
 This project uses `ansible-lint` for linting. To check your code, run:
@@ -67,6 +69,10 @@ Full molecule tests go through this matrix:
 
 Inspect the scenario `molecule.yml` files for specific configurations.
 
+Run tests in the background if possible, as they can be long-running.
+
+There is likely an Ara (Ara Records Ansible) server available at `http://localhost:8000` to track playbook runs. Use Context7 if available to learn Ara API endpoints.
+
 ## Code Style
 
 - Follow existing code conventions found in the project.
@@ -74,6 +80,7 @@ Inspect the scenario `molecule.yml` files for specific configurations.
 - Ensure all code passes the `ansible-lint` checks.
 - Avoid using `set_fact` to define variables when possible; prefer using `vars` at the task or block level.
 - Define default variables in `defaults/main.yml` and override them in `vars` or playbooks as needed.
+- Always use context7 when I need code generation, setup or configuration steps, or library/API documentation. This means you should automatically use the Context7 MCP tools to resolve library id and get library docs without me having to explicitly ask.
 
 ## Key Files
 

@@ -34,31 +34,31 @@
 
 - name: Extract package version numbers
   ansible.builtin.set_fact:
-    # For package names such as 'docker-25.0.6-1.amzn2.0.2' we need to extract the
-    #  version numbers separately (main release version, and OS packaging version)
+    # For package names such as 'docker-25.0.6-1.amzn2.0.2' or '5:27.4.1-1~ubuntu.24.04~noble'
+    # we need to extract the version numbers separately (main release version, and OS packaging version)
     __docker_engine_target_package_version_primary: >-
       {{
-        __docker_engine_target_package_version |
-        regex_search('^((?:\d+\.?){3}(?:-\d*)?)') |
-        default('0.0.0', true)
+        (__docker_engine_target_package_version |
+        regex_search('(?:^\d+:)?(\d+\.\d+\.\d+)', '\1') | default(['0.0.0'], true))[0]
       }}
     __docker_engine_target_package_version_secondary: >-
       {{
-        __docker_engine_target_package_version |
-        regex_search('((?:\d+\.?){3}$)') |
-        default('0.0.0', true)
+        (__docker_engine_target_package_version |
+        regex_search('(?:^\d+:)?\d+\.\d+\.\d+-(\d+)', '\1') | default(['0.0.0'], true))[0] |
+        regex_replace('^(\d+)$', '\1.0.0') |
+        regex_replace('^(\d+\.\d+)$', '\1.0')
       }}
     __docker_engine_installed_pkg_version_primary: >-
       {{
-        __docker_engine_installed_pkg_version |
-        regex_search('^((?:\d+\.?){3}(?:-\d*)?)') |
-        default('0.0.0', true)
+        (__docker_engine_installed_pkg_version |
+        regex_search('(?:^\d+:)?(\d+\.\d+\.\d+)', '\1') | default(['0.0.0'], true))[0]
       }}
     __docker_engine_installed_pkg_version_secondary: >-
       {{
-        __docker_engine_installed_pkg_version |
-        regex_search('((?:\d+\.?){3}$)') |
-        default('0.0.0', true)
+        (__docker_engine_installed_pkg_version |
+        regex_search('(?:^\d+:)?\d+\.\d+\.\d+-(\d+)', '\1') | default(['0.0.0'], true))[0] |
+        regex_replace('^(\d+)$', '\1.0.0') |
+        regex_replace('^(\d+\.\d+)$', '\1.0')
       }}
 
 - name: Docker version status is
@@ -68,6 +68,15 @@
       Installed version: {{ __docker_engine_installed_version | default('none', true) }}
       Installed package version: {{ __docker_engine_installed_pkg_version | default('none', true) }}
       Desired version (mask): {{ docker_engine_package_version }}
+
+- name: DEBUG | Package version components
+  ansible.builtin.debug:
+    msg: |
+      Target primary version: {{ __docker_engine_target_package_version_primary }}
+      Target secondary version: {{ __docker_engine_target_package_version_secondary }}
+      Installed primary version: {{ __docker_engine_installed_pkg_version_primary | default('none', true) }}
+      Installed secondary version: {{ __docker_engine_installed_pkg_version_secondary | default('none', true) }}
+    verbosity: 1
 
 - name: Plan execution state
   ansible.builtin.set_fact:
