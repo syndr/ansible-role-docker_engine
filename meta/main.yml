@@ -31,15 +31,16 @@ galaxy_info:
   platforms:
     - name: Fedora
       versions:
+        - 43
         - 42
     - name: Rocky
       versions:
-        - 9
         - 10
+        - 9
     - name: Amazon
       versions:
-        - 2
         - 2023
+        - 2
     - name: Ubuntu
       versions:
         - 24.04

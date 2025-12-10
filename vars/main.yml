@@ -32,4 +32,3 @@ __docker_engine_package_versions: []
 # Packages that shouldn't be uninstalled when removing Docker
 __docker_engine_remove_package_excludes:
   - selinux-policy-targeted
-

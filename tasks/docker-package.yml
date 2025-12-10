@@ -52,10 +52,20 @@
               }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
+            # Pin version-synced packages (like docker-ce-cli) to match docker-ce version
+            __docker_engine_versioned_extra_packages: >-
+              {{
+                __docker_engine_extra_packages | map('regex_replace',
+                  '^(' + (docker_engine_version_synced_packages | join('|')) + ')$',
+                  '\1=' + __docker_engine_target_package_version
+                ) | list
+                if docker_engine_package_state != 'absent' and __docker_engine_target_package_version is defined
+                else __docker_engine_extra_packages
+              }}
           block:
             - name: Manage Docker package (apt)
               ansible.builtin.apt:
-                name: "{{ [__docker_engine_install_package_name] + __docker_engine_extra_packages}}"
+                name: "{{ [__docker_engine_install_package_name] + __docker_engine_versioned_extra_packages }}"
                 state: "{{ __docker_engine_request_pkg_mgr_state }}"
                 allow_downgrade: "{{ docker_engine_allow_downgrade }}"
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"
@@ -96,10 +106,20 @@
               }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
+            # Pin version-synced packages (like docker-ce-cli) to match docker-ce version
+            __docker_engine_versioned_extra_packages: >-
+              {{
+                __docker_engine_extra_packages | map('regex_replace',
+                  '^(' + (docker_engine_version_synced_packages | join('|')) + ')$',
+                  '\1-' + __docker_engine_target_package_version
+                ) | list
+                if docker_engine_package_state != 'absent' and __docker_engine_target_package_version is defined
+                else __docker_engine_extra_packages
+              }}
           block:
             - name: Manage Docker package (yum)
               ansible.builtin.yum:
-                name: "{{ [__docker_engine_install_package_name] + __docker_engine_extra_packages}}"
+                name: "{{ [__docker_engine_install_package_name] + __docker_engine_versioned_extra_packages }}"
                 state: "{{ __docker_engine_request_pkg_mgr_state }}"
                 allow_downgrade: "{{ docker_engine_allow_downgrade }}"
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"
@@ -137,10 +157,20 @@
               }}
             # We always use 'present' for existing packages, as we want to let the versioning logic handle package selection
             __docker_engine_request_pkg_mgr_state: "{{ 'absent' if docker_engine_package_state == 'absent' else 'present' }}"
+            # Pin version-synced packages (like docker-ce-cli) to match docker-ce version
+            __docker_engine_versioned_extra_packages: >-
+              {{
+                __docker_engine_extra_packages | map('regex_replace',
+                  '^(' + (docker_engine_version_synced_packages | join('|')) + ')$',
+                  '\1-' + __docker_engine_target_package_version
+                ) | list
+                if docker_engine_package_state != 'absent' and __docker_engine_target_package_version is defined
+                else __docker_engine_extra_packages
+              }}
           block:
             - name: Manage Docker package (dnf)
               ansible.builtin.dnf:
-                name: "{{ [__docker_engine_install_package_name] + __docker_engine_extra_packages}}"
+                name: "{{ [__docker_engine_install_package_name] + __docker_engine_versioned_extra_packages }}"
                 state: "{{ __docker_engine_request_pkg_mgr_state }}"
                 allow_downgrade: "{{ docker_engine_allow_downgrade }}"
                 autoremove: "{{ true if docker_engine_package_state == 'absent' else false }}"

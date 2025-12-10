@@ -38,7 +38,16 @@ docker_engine_package_version: "27"
 docker_engine_package_state: present
 
 # A list of extra packages to install alongside the Docker package
+#  - Packages listed in docker_engine_version_synced_packages will be automatically
+#    version-pinned to match the docker-ce version
 docker_engine_extra_packages: []
+
+# Packages that must have their version synced with docker-ce
+#  - These packages track the docker-ce version exactly and must match to avoid API version mismatches
+#  - When these packages appear in docker_engine_extra_packages, they will be installed
+#    with the same version as docker-ce
+docker_engine_version_synced_packages:
+  - docker-ce-cli
 
 # Allow this role to make changes which may restart the Docker daemon (true/false)
 # NOTE: Restarting the docker daemon will cause running containers to be stopped!
@@ -70,6 +79,11 @@ docker_engine_use_nftables_shim: AUTO
 #  Docker relies on deprecated iptables commands, see: https://github.com/docker/for-linux/issues/1472
 docker_engine_iptables_path: /usr/sbin/iptables
 
+# Possible paths to the docker.socket systemd unit file
+# Used to detect if socket activation is enabled for proper service restart ordering
+docker_engine_socket_unit_paths:
+  - /usr/lib/systemd/system/docker.socket
+  - /lib/systemd/system/docker.socket
+
 # List of usernames that should be given access to docker
 docker_engine_users: []
-

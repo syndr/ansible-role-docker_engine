@@ -1,4 +1,11 @@
 ---
+# Docker-in-Docker test scenario for docker_engine role
+#
+# NOTE: The /var/lib/docker and /var/lib/containerd volumes are required to avoid
+# overlay-on-overlay filesystem issues when running Docker inside containers.
+# Without these volumes, containerd's snapshotter fails with "invalid argument"
+# when attempting to create nested overlay mounts.
+
 role_name_check: 0
 dependency:
   name: galaxy
@@ -8,15 +15,31 @@ driver:
     managed: true
     login_cmd_template: 'docker exec -ti {instance} bash'
 platforms:
+  - name: role-docker_engine-docker-rockylinux10
+    type: docker
+    image: geerlingguy/docker-rockylinux10-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "28"
+      ci_docker_high_version: "29"
+
   - name: role-docker_engine-docker-rockylinux9
     type: docker
     image: geerlingguy/docker-rockylinux9-ansible:latest
     systemd: True
     modify_image: False
     privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
     hostvars:
-      ci_docker_low_version: "20.10"
-      ci_docker_high_version: "25.0"
+      ci_docker_low_version: "25"
+      ci_docker_high_version: "27"
 
   - name: role-docker_engine-docker-fedora42
     type: docker
@@ -24,9 +47,25 @@ platforms:
     systemd: True
     modify_image: False
     privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
     hostvars:
       ci_docker_low_version: "28.2"
-      ci_docker_high_version: "28.4"
+      ci_docker_high_version: "28"
+
+  - name: role-docker_engine-docker-fedora43
+    type: docker
+    image: geerlingguy/docker-fedora43-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "28"
+      ci_docker_high_version: "29"
 
   - name: role-docker_engine-docker-amazon2023
     type: docker
@@ -34,19 +73,25 @@ platforms:
     systemd: True
     modify_image: False
     privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
     hostvars:
-      ci_docker_low_version: "20.10"
-      ci_docker_high_version: "24.0"
+      ci_docker_low_version: "24"
+      ci_docker_high_version: "25"
 
-  - name: role-docker_engine-ubuntu2404
+  - name: role-docker_engine-docker-ubuntu2404
     type: docker
     image: geerlingguy/docker-ubuntu2404-ansible:latest
     systemd: True
     modify_image: False
     privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
     hostvars:
       ci_docker_low_version: "27.2"
-      ci_docker_high_version: "27.4"
+      ci_docker_high_version: "29"
 provisioner:
   name: ansible
   log: True

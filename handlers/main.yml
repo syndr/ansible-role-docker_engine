@@ -6,7 +6,5 @@
     - docker_engine_service_manage | bool
     - docker_engine_allow_restart | bool
     - docker_engine_package_state != 'absent'
-  become: true
-  ansible.builtin.service:
-    name: docker
-    state: "{{ docker_engine_restart_handler_state }}"
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/handlers/restart-docker.yml"
