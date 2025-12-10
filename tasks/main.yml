@@ -1,25 +1,26 @@
 ---
 
-- name: Validate configuration
-  ansible.builtin.include_tasks: validate.yml
-
 - name: Gather some host facts
   ansible.builtin.setup:
-    filter:
-      - 'ansible_distribution*'
-      - 'ansible_pkg_mgr'
-      - 'ansible_architecture'
+    gather_subset:
+      - architecture
+      - distribution
+      - pkg_mgr
+      - system
+
+- name: Validate configuration
+  ansible.builtin.include_tasks: validate.yml
 
 - name: Install Docker
   block:
     - name: Manage docker package
       ansible.builtin.include_tasks: "{{ role_path }}/tasks/docker-package.yml"
   rescue:
-    - name: Docker installation management has failed!
+    - name: There was an error managing the Docker packages on this system.
       ansible.builtin.fail:
-        msg: There was an error managing the Docker packages on this system.
+        msg: "{{ ansible_failed_result.msg | to_nice_json }}"
 
-# TODO: Actually remove config files if state is 'absent'
+# TODO: Actually remove docker config files if state is 'absent'
 - name: Configure for 'installed' state
   when: docker_engine_package_state != 'absent'
   block:
@@ -46,7 +47,9 @@
         dest: /etc/docker/daemon.json
         mode: 0644
       when: docker_engine_daemon_options.keys() | length > 0
-      notify: restart docker
+      notify: Restart Docker
+      # NOTE: Service restart will be skipped if 'docker_engine_allow_restart' is false (thus loading changes
+      #         at the next service restart instead)
 
     - name: Configure Docker Users
       include_tasks: docker-users.yml
@@ -65,14 +68,19 @@
       ansible.builtin.meta: flush_handlers
 
     - name: Check Docker version information
-      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get_version.yml"
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/get-existing.yml"
 
-    # NOTE: At present, 'latest' will allow newer versions than the one specified
     - name: Validate docker version
-      when: docker_engine_package_state == 'present'
+      when: docker_engine_package_state != 'absent'
+      vars:
+        # Strip out the distro release version info, if it exists -- separator in the string is assumed to be in the format of '-0:'
+        __docker_engine_package_version_short: "{{ docker_engine_package_version | regex_search('(^[\\.\\d]+)\\D*.*', '\\1') | last }}"
+        __docker_engine_package_version: "{{ __docker_engine_package_version_short | default(docker_engine_package_version, true) }}"
       ansible.builtin.assert:
         that:
-          - docker_engine_package_version in __docker_engine_installed_version
-        fail_msg: "Docker version is {{ __docker_engine_installed_version }} but {{ docker_engine_package_version }} is expected!"
-        success_msg: "Docker version is as expected"
+          - __docker_engine_package_version in __docker_engine_installed_version
+        fail_msg: "Docker version is {{ __docker_engine_installed_version }} but {{ __docker_engine_package_version }} is expected!"
+        success_msg: >-
+          Docker version is as expected.
+          Mask: {{ __docker_engine_package_version }} Installed: {{ __docker_engine_installed_version }}
 

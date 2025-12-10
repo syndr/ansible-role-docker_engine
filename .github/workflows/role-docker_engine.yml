@@ -1,6 +1,6 @@
 ---
 
-name: Role - system
+name: Role - docker_engine
 on:
   pull_request:
   push:
@@ -21,7 +21,6 @@ jobs:
         python-version: ["3.12"]
         molecule-scenario:
           - role-docker_engine-docker
-
     if: >
       (github.event_name == 'pull_request' ||
       (github.event_name == 'push' && github.ref_name == 'main'))
@@ -29,5 +28,6 @@ jobs:
     with:
       scenario: ${{ matrix.molecule-scenario }}
       python-version: ${{ matrix.python-version }}
+      # Pin to Ubuntu 22.04 to avoid PAM/cgroup v2 issues with RHEL-based containers
+      runner-type: ubuntu-22.04
     secrets: inherit
-

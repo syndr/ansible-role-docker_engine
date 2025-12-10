@@ -1,0 +1,74 @@
+---
+# Handle Docker version for apt-based systems
+
+- name: Load installed package version
+  when: __docker_engine_installed_version is truthy
+  ansible.builtin.command:
+    cmd: dpkg-query --showformat='${Version}' --show {{ docker_engine_package }}
+  changed_when: false
+  register: __docker_engine_installed_pkg_raw
+
+- name: Update APT cache
+  become: true
+  ansible.builtin.apt:
+    update_cache: true
+  when: docker_engine_package_state == 'latest'
+
+- name: Find matching package names
+  ansible.builtin.command:
+    cmd: apt-cache madison {{ docker_engine_package }}
+  register: __docker_engine_package_list_raw
+  changed_when: false
+
+- name: Extract applicable package versions
+  ansible.builtin.set_fact:
+    __docker_engine_package_versions: >-
+      {{
+        __docker_engine_package_list_raw.stdout_lines
+        | map('regex_search', '(\s*' ~ docker_engine_package ~ '.*\|\s)(.*' ~ docker_engine_package_version ~ '\S*)(.*)', '\2')
+        | flatten
+        | community.general.version_sort
+      }}
+
+- name: Calculate versioning
+  when: docker_engine_package_state != 'absent'
+  vars:
+    __docker_engine_installed_pkg_version: >-
+      {{
+        __docker_engine_installed_pkg_raw.stdout | trim
+        if __docker_engine_installed_version is truthy
+        else
+        None
+      }}
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/decide-future.yml"
+
+- name: Set install state for absent package state
+  when: docker_engine_package_state == 'absent'
+  ansible.builtin.set_fact:
+    __docker_engine_doinstall: false
+    __docker_engine_target_package_version: ""
+
+- name: Manage apt version hold
+  vars:
+    __docker_engine_hold_package_name: "{{ docker_engine_package }}"
+  block:
+    - name: Load current version hold
+      ansible.builtin.command:
+        cmd: "apt-mark showhold"
+      register: __docker_engine_hold_list_raw
+      changed_when: false
+
+    - name: Do the version holding
+      vars:
+        __docker_engine_hold_list: "{{ __docker_engine_hold_list_raw.stdout_lines }}"
+      block:
+        - name: Remove existing version hold for {{ __docker_engine_hold_package_name }}
+          when: >-
+            __docker_engine_hold_package_name in __docker_engine_hold_list and (
+              __docker_engine_doinstall or
+              docker_engine_package_state == "absent"
+            )
+          become: true
+          ansible.builtin.dpkg_selections:
+            name: "{{ __docker_engine_hold_package_name }}"
+            selection: install

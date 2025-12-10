@@ -1,0 +1,29 @@
+---
+# Downgrade docker version
+#
+
+- name: Downgrading docker to version
+  ansible.builtin.debug:
+    var: ci_target_version
+
+- name: Install 'low' version of docker, and give ci user docker permissions
+  ansible.builtin.include_role:
+    name: docker_engine
+  vars:
+    docker_engine_package_version: "{{ ci_target_version }}"
+    docker_engine_users:
+      - "{{ ansible_user }}"
+    docker_engine_allow_downgrade: true
+
+- name: Get the docker engine version
+  ansible.builtin.command:
+    cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
+  register: __ci_docker_version_raw
+  changed_when: false
+
+- name: Docker downgrade was successful
+  ansible.builtin.assert:
+    that:
+      - ci_target_version in __ci_docker_version_raw.stdout | from_json
+    fail_msg: "The expected docker version ({{ ci_target_version }}) is not installed"
+    success_msg: "The expected docker version ({{ __ci_docker_version_raw.stdout | from_json }}) is installed"

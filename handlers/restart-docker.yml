@@ -1,0 +1,30 @@
+---
+# Restart Docker service (and socket if present)
+#
+# When Docker packages are upgraded/downgraded, the docker.socket unit configuration
+# may change. If systemd isn't told to restart the socket, it loses its file descriptor
+# and becomes non-functional, causing: "failed to load listeners: no sockets found via socket activation"
+
+- name: Check if docker.socket unit exists
+  loop: "{{ docker_engine_socket_unit_paths }}"
+  loop_control:
+    loop_var: __docker_engine_socket_path
+  ansible.builtin.stat:
+    path: "{{ __docker_engine_socket_path }}"
+  register: __docker_engine_socket_unit_check
+
+- name: Restart Docker services
+  become: true
+  loop: "{{ __docker_engine_restart_services }}"
+  loop_control:
+    loop_var: __docker_engine_service
+  vars:
+    __docker_engine_restart_services: >-
+      {{
+        (['docker.socket'] if __docker_engine_socket_unit_check.results | selectattr('stat.exists', 'true') | list | length > 0 else [])
+        + ['docker.service']
+      }}
+  ansible.builtin.systemd:
+    name: "{{ __docker_engine_service }}"
+    state: "{{ docker_engine_restart_handler_state }}"
+    daemon_reload: true

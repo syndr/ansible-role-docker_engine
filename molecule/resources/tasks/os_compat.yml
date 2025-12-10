@@ -7,19 +7,43 @@
 #                                                                    #
 ### NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE ###
 
+- name: Query current OS
+  ansible.builtin.raw: grep -E '^ID=' /etc/os-release | awk -F= '{print $2}' | tr -d '"'
+  register: __ci_os_release_raw
+  changed_when: false
+
+- name: Query OS version id
+  ansible.builtin.raw: grep -E '^VERSION_ID=' /etc/os-release | awk -F= '{print $2}' | tr -d '"'
+  register: __ci_os_version_raw
+  changed_when: false
+
+- name: Set OS type facts
+  ansible.builtin.set_fact:
+    __ci_os_type: "{{ __ci_os_release_raw.stdout | default('') | trim | lower }}"
+    __ci_os_version: "{{ __ci_os_version_raw.stdout | default('') | trim }}"
+
+- name: 🐜 Show detected OS type
+  ansible.builtin.debug:
+    msg: "Detected OS type: {{ __ci_os_type }} {{ __ci_os_version }}"
+
+- name: Install python comaptibility layers
+  when: >-
+    __ci_os_type == 'centos' and __ci_os_version == '7' or
+    __ci_os_type == 'amzn' and __ci_os_version == '2'
+  block:
+    - name: Install pypy python interpreter for Ansible
+      when: ansible_python_interpreter is not defined
+      ansible.builtin.include_role:
+        name: python_standalone
+
+    - name: Set legacy OS vars
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: /usr/local/bin/python3.10
+
 - name: Load host facts
   ansible.builtin.setup:
     gather_subset:
-      - '!all'
-      - '!min'
       - distribution
-    filter:
-      - ansible_distribution*
-
-- name: Set legacy OS vars
-  when: >
-    ansible_distribution == "CentOS" and ansible_distribution_major_version == "7" or
-    ansible_distribution == "Amazon" and ansible_distribution_major_version == "2"
-  ansible.builtin.set_fact:
-    ansible_python_interpreter: /usr/local/bin/python3.10
+      - pkg_mgr
+      - os_family
 

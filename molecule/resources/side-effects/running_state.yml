@@ -1,0 +1,85 @@
+---
+# Verify that docker service is not restarted when not allowed
+#
+
+# Docker version is assumed to be < target version for these checks
+- name: Get docker service original start time
+  become: true
+  ansible.builtin.command:
+    cmd: "systemctl show -p ActiveEnterTimestamp docker"
+  changed_when: false
+  register: __ci_docker_service_original_start_timestamp_raw
+
+- name: Run docker role with no-restart flag
+  ansible.builtin.include_role:
+    name: docker_engine
+  vars:
+    # Check the "lower" version, as that should be installed already
+    docker_engine_package_version: "{{ ci_docker_low_version }}"
+    docker_engine_package_state: present
+    docker_engine_allow_restart: false
+    # Include config change to make sure no-restart is respected
+    docker_engine_daemon_options:
+      log-driver: "json-file"
+      log-opts:
+        max-size: "40m"
+        max-file: "4"
+
+- name: Get docker service current start time
+  become: true
+  ansible.builtin.command:
+    cmd: "systemctl show -p ActiveEnterTimestamp docker"
+  changed_when: false
+  register: __ci_docker_service_current_start_timestamp_raw
+
+- name: Verify service uptime
+  ansible.builtin.assert:
+    that:
+      - __ci_docker_service_original_start_timestamp_raw.stdout == __ci_docker_service_current_start_timestamp_raw.stdout
+    fail_msg: |
+      Service was restarted!
+      Original start time: {{ __ci_docker_service_original_start_timestamp_raw.stdout }}
+      Current start time: {{ __ci_docker_service_current_start_timestamp_raw.stdout }}
+    success_msg: |
+      Service was not restarted.
+      Original start time: {{ __ci_docker_service_original_start_timestamp_raw.stdout }}
+      Current start time: {{ __ci_docker_service_current_start_timestamp_raw.stdout }}
+
+- name: Try not-allowed update
+  block:
+    - name: Run docker role with newer version and no-restart flag (should fail)
+      ansible.builtin.include_role:
+        name: docker_engine
+      vars:
+        docker_engine_package_version:  "{{ ci_target_version }}"
+        docker_engine_package_state: latest
+        docker_engine_allow_restart: false
+        docker_engine_restart_handler_state: restarted
+  rescue:
+    - name: Validate failure state
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is failed
+          - ansible_failed_result.msg | regex_search('Version mask .* is not satisfied by installed version .*') is truthy
+        fail_msg: "Role allowed a non-allowed update"
+        success_msg: "Role did not allow a non-allowed update"
+
+- name: Get docker service current start time
+  become: true
+  ansible.builtin.command:
+    cmd: "systemctl show -p ActiveEnterTimestamp docker"
+  changed_when: false
+  register: __ci_docker_service_current_start_timestamp_raw
+
+- name: Verify service uptime
+  ansible.builtin.assert:
+    that:
+      - __ci_docker_service_original_start_timestamp_raw.stdout == __ci_docker_service_current_start_timestamp_raw.stdout
+    fail_msg: |
+      Service was restarted!
+      Original start time: {{ __ci_docker_service_original_start_timestamp_raw.stdout }}
+      Current start time: {{ __ci_docker_service_current_start_timestamp_raw.stdout }}
+    success_msg: |
+      Service was not restarted.
+      Original start time: {{ __ci_docker_service_original_start_timestamp_raw.stdout }}
+      Current start time: {{ __ci_docker_service_current_start_timestamp_raw.stdout }}

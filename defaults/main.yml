@@ -14,23 +14,21 @@ docker_engine_auths_allow_failed: false
 # The Docker daemon options to set in /etc/docker/daemon.json
 # - The options are set as key-value pairs in a dictionary
 docker_engine_daemon_options:
-  docker_daemon_options:
-    log-driver: "json-file"
-    log-opts:
-      max-size: "20m"
-      max-file: "2"
+  log-driver: "json-file"
+  log-opts:
+    max-size: "20m"
+    max-file: "2"
 
 # The name of the Docker application package in the system  package manager
-#  - Set to 'DEFAULT' to use the default package name for the system, if available
-docker_engine_package: DEFAULT
+docker_engine_package: "{{ __docker_engine_compat_package_name | default(none) }}"
 
 # The version of the Docker application package to install
 #  - Both specific version numbers such as "20.10.25-1.amzn2.0.3" and nonspecific
 #    version numbers such as "20.10" are supported.
 #  - If a nonspecific version number is provided (IE: "20.10"), the latest version of the package
 #    that matches the nonspecific version number will be installed.
-#     - If an applicable version is already installed (IE: "20.10.25-1.amzn2.0.3"), and package state
-#       is set to 'present', the installed version will be left as is.
+#  - If an applicable version is already installed (IE: "20.10.25-1.amzn2.0.3"), and package state
+#    is set to 'present', the installed version will be left as is.
 docker_engine_package_version: "27"
 
 # The state of the Docker application package (present/absent/latest)
@@ -40,7 +38,16 @@ docker_engine_package_version: "27"
 docker_engine_package_state: present
 
 # A list of extra packages to install alongside the Docker package
+#  - Packages listed in docker_engine_version_synced_packages will be automatically
+#    version-pinned to match the docker-ce version
 docker_engine_extra_packages: []
+
+# Packages that must have their version synced with docker-ce
+#  - These packages track the docker-ce version exactly and must match to avoid API version mismatches
+#  - When these packages appear in docker_engine_extra_packages, they will be installed
+#    with the same version as docker-ce
+docker_engine_version_synced_packages:
+  - docker-ce-cli
 
 # Allow this role to make changes which may restart the Docker daemon (true/false)
 # NOTE: Restarting the docker daemon will cause running containers to be stopped!
@@ -63,6 +70,20 @@ docker_engine_restart_handler_state: restarted
 docker_engine_networks:
   - main
 
+# Utilize the iptables-nft shim for nftables support (true/false/AUTO)
+#  - This is only necessary on systems where nftables is the default firewall backend
+#  - System will be reconfigured for iptables --> iptables-nft using 'alternatives' if set to true
+docker_engine_use_nftables_shim: AUTO
+
+# Path to iptables binary
+#  Docker relies on deprecated iptables commands, see: https://github.com/docker/for-linux/issues/1472
+docker_engine_iptables_path: /usr/sbin/iptables
+
+# Possible paths to the docker.socket systemd unit file
+# Used to detect if socket activation is enabled for proper service restart ordering
+docker_engine_socket_unit_paths:
+  - /usr/lib/systemd/system/docker.socket
+  - /lib/systemd/system/docker.socket
+
 # List of usernames that should be given access to docker
 docker_engine_users: []
-

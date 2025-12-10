@@ -1,4 +1,11 @@
 ---
+# Docker-in-Docker test scenario for docker_engine role
+#
+# NOTE: The /var/lib/docker and /var/lib/containerd volumes are required to avoid
+# overlay-on-overlay filesystem issues when running Docker inside containers.
+# Without these volumes, containerd's snapshotter fails with "invalid argument"
+# when attempting to create nested overlay mounts.
+
 role_name_check: 0
 dependency:
   name: galaxy
@@ -8,29 +15,83 @@ driver:
     managed: true
     login_cmd_template: 'docker exec -ti {instance} bash'
 platforms:
+  - name: role-docker_engine-docker-rockylinux10
+    type: docker
+    image: geerlingguy/docker-rockylinux10-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "28"
+      ci_docker_high_version: "29"
+
   - name: role-docker_engine-docker-rockylinux9
     type: docker
     image: geerlingguy/docker-rockylinux9-ansible:latest
     systemd: True
     modify_image: False
     privileged: True
-    hostvars: {}
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "25"
+      ci_docker_high_version: "27"
 
-  #- name: role-docker_engine-docker-fedora40
-  #  type: docker
-  #  image: geerlingguy/docker-fedora40-ansible:latest
-  #  systemd: True
-  #  modify_image: False
-  #  privileged: True
-  #  hostvars: {}
+  - name: role-docker_engine-docker-fedora42
+    type: docker
+    image: geerlingguy/docker-fedora42-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "28.2"
+      ci_docker_high_version: "28"
 
-  #- name: role-docker_engine-ubuntu2204
-  #  type: docker
-  #  image: geerlingguy/docker-ubuntu2204-ansible:latest
-  #  systemd: True
-  #  modify_image: False
-  #  privileged: True
-  #  hostvars: {}
+  - name: role-docker_engine-docker-fedora43
+    type: docker
+    image: geerlingguy/docker-fedora43-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "28"
+      ci_docker_high_version: "29"
+
+  - name: role-docker_engine-docker-amazon2023
+    type: docker
+    image: geerlingguy/docker-amazonlinux2023-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "24"
+      ci_docker_high_version: "25"
+
+  - name: role-docker_engine-docker-ubuntu2404
+    type: docker
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    systemd: True
+    modify_image: False
+    privileged: True
+    volumes:
+      - /var/lib/docker
+      - /var/lib/containerd
+    hostvars:
+      ci_docker_low_version: "27.2"
+      ci_docker_high_version: "29"
 provisioner:
   name: ansible
   log: True
@@ -47,6 +108,16 @@ provisioner:
       gathering: explicit
       playbook_vars_root: top
       verbosity: ${ANSIBLE_VERBOSITY:-0}
+  env:
+    ANSIBLE_ROLES_PATH: /usr/share/ansible/roles:/etc/ansible/roles:${MOLECULE_PROJECT_DIRECTORY}/.ansible/roles:${HOME}/.ansible/roles
+    ANSIBLE_COLLECTIONS_PATH: /usr/share/ansible/collections:${MOLECULE_PROJECT_DIRECTORY}/.ansible/collections:${HOME}/.ansible/collections
+
+    ARA_API_CLIENT: ${ARA_API_CLIENT:-'http'}
+    ARA_API_SERVER: ${ARA_API_SERVER:-'http://localhost:8000'}
+    ARA_DEFAULT_LABELS: ${ARA_DEFAULT_LABELS:-'testing,molecule'}
+    # To use Ara with molecule:
+    #  export the ANSIBLE_CALLBACK_PLUGINS env var with the output of 'python3 -m ara.setup.callback_plugins'
+    ANSIBLE_CALLBACK_PLUGINS: ${ANSIBLE_CALLBACK_PLUGINS}
 scenario:
   create_sequence:
     - dependency

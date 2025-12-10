@@ -1,6 +1,10 @@
 ---
 # Make sure the input data is sane
 
+- name: Show package version
+  ansible.builtin.debug:
+    var: docker_engine_package_version
+
 - name: Data types are valid
   ansible.builtin.assert:
     that:
@@ -26,7 +30,38 @@
       - docker_engine_package_state in ['present', 'latest', 'absent']
       - docker_engine_service_state in ['started', 'stopped', 'restarted']
       - docker_engine_restart_handler_state in ['started', 'stopped', 'restarted']
-      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$')
+      - docker_engine_package_version | regex_search('^[0-9]+\\.?.*$') is truthy
     fail_msg: "Invalid state in input data. Check your configuration data."
     success_msg: "States are within accepted values"
+
+- name: Check iptables support
+  block:
+    # Docker relies on deprecated iptables commands, see: https://github.com/docker/for-linux/issues/1472
+    - name: Test iptables command
+      ansible.builtin.command: "{{ docker_engine_iptables_path }} --version"
+      changed_when: false
+      failed_when: false
+      register: __docker_engine_iptables_version_check
+
+    - name: Validate nftables shim config
+      when: __docker_engine_iptables_version_check.rc != 0
+      ansible.builtin.assert:
+        that:
+          - docker_engine_use_nftables_shim in ['true', 'AUTO']
+        fail_msg: "Nftables shim is required, but not enabled. Set docker_engine_use_nftables_shim to 'true' or 'AUTO'"
+        success_msg: "Nftables shim configuration is valid."
+
+    - name: Nftables shim is required
+      when:
+        - docker_engine_use_nftables_shim == 'AUTO'
+        - __docker_engine_iptables_version_check.rc != 0
+      ansible.builtin.set_fact:
+        docker_engine_use_nftables_shim: true
+
+    - name: Nftables shim is not required
+      when:
+        - docker_engine_use_nftables_shim == 'AUTO'
+        - __docker_engine_iptables_version_check.rc == 0
+      ansible.builtin.set_fact:
+        docker_engine_use_nftables_shim: false
 

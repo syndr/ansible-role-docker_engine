@@ -24,9 +24,19 @@
     - name: Load OS compatibility settings
       ansible.builtin.include_tasks: tasks/os_compat.yml
 
+    - name: Show target high version
+      ansible.builtin.debug:
+        var: ci_docker_high_version
+
     - name: Load docker_engine role
-      vars:
-        docker_engine_package_version: "27.1"
       ansible.builtin.include_role:
         name: docker_engine
+      vars:
+        docker_engine_package_version: "{{ ci_docker_high_version }}"
+        # Allow the role to modify the installed docker version to match its default configuration
+        docker_engine_allow_downgrade: true
+        docker_engine_allow_restart: true
+        docker_engine_package_state: latest
+        docker_engine_users:
+          - "{{ ansible_user }}"
 
