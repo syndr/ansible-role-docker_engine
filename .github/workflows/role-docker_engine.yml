@@ -29,5 +29,7 @@ jobs:
     with:
       scenario: ${{ matrix.molecule-scenario }}
       python-version: ${{ matrix.python-version }}
+      # Pin to Ubuntu 22.04 to avoid PAM/cgroup v2 issues with RHEL-based containers
+      runner-type: ubuntu-22.04
     secrets: inherit
 
