@@ -1,0 +1,124 @@
+---
+# Prepare nftables for Docker networking
+#
+# Docker bridge networking requires br_netfilter and xt_addrtype kernel
+# modules. On systems using nftables, the iptables-nft translation layer
+# also requires legacy-compatible base chains (nat, filter, mangle) to
+# exist. This taskfile ensures all prerequisites are met before Docker
+# starts.
+
+- name: Prepare nftables on non-container hosts
+  when: ansible_virtualization_type not in ["docker", "container", "containerd"]
+  become: true
+  block:
+    - name: Check for built-in br_netfilter support
+      ansible.builtin.stat:
+        path: /proc/sys/net/bridge/bridge-nf-call-iptables
+      register: __docker_engine_br_netfilter_builtin
+
+    - name: Ensure Docker networking kernel modules are available
+      when: not __docker_engine_br_netfilter_builtin.stat.exists
+      block:
+        # On kernels where br_netfilter/xt_addrtype are compiled-in
+        # (CONFIG_*=y rather than =m), modprobe will fail because no .ko
+        # file exists even though the functionality is present. Check
+        # modules.builtin first so we only modprobe what actually needs it.
+        - name: Read kernel built-in modules list
+          ansible.builtin.slurp:
+            src: "/lib/modules/{{ ansible_kernel }}/modules.builtin"
+          register: __docker_engine_builtin_modules
+          failed_when: false
+
+        - name: Load required netfilter modules
+          vars:
+            __builtin_content: "{{ (__docker_engine_builtin_modules.content | default('') | b64decode) }}"
+            __modules_to_load: "{{ ['br_netfilter', 'xt_addrtype'] | reject('in', __builtin_content) | list }}"
+          when: __modules_to_load | length > 0
+          block:
+            - name: Load netfilter modules
+              loop: "{{ __modules_to_load }}"
+              loop_control:
+                loop_var: __docker_engine_module
+              community.general.modprobe:
+                name: "{{ __docker_engine_module }}"
+                state: present
+
+          rescue:
+            - name: Install kernel networking modules packages
+              when: ansible_os_family == "RedHat"
+              ansible.builtin.package:
+                name:
+                  - "kernel-modules-{{ ansible_kernel }}"
+                  - "kernel-modules-extra-{{ ansible_kernel }}"
+                state: present
+
+            - name: Retry loading required netfilter modules
+              loop: "{{ __modules_to_load }}"
+              loop_control:
+                loop_var: __docker_engine_module
+              community.general.modprobe:
+                name: "{{ __docker_engine_module }}"
+                state: present
+              register: __docker_engine_modprobe_retry
+              failed_when: false
+
+            - name: Fail if required kernel modules are unavailable
+              loop: "{{ __docker_engine_modprobe_retry.results }}"
+              loop_control:
+                loop_var: __docker_engine_modprobe_result
+                label: "{{ __docker_engine_modprobe_result.__docker_engine_module }}"
+              when: __docker_engine_modprobe_result.rc | default(1) != 0
+              ansible.builtin.fail:
+                msg: >-
+                  Kernel module '{{ __docker_engine_modprobe_result.__docker_engine_module }}' could not be loaded.
+                  Docker bridge networking requires br_netfilter and xt_addrtype.
+                  If kernel packages were updated without a reboot, the modules
+                  may only be available for the newer kernel. Ensure
+                  kernel-modules-extra is installed for the running kernel
+                  ({{ ansible_kernel }}).
+
+    - name: Check if nftables service exists
+      ansible.builtin.service_facts:
+
+    - name: Ensure nftables service is running
+      when: "'nftables.service' in ansible_facts.services"
+      ansible.builtin.service:
+        name: nftables
+        state: started
+        enabled: true
+
+# Initialize iptables-nft compatibility tables
+#
+# Under iptables-nft, the nftables backing tables (nat, filter, mangle) are
+# created lazily on first access. A list operation (-L) triggers this
+# initialization as a side effect. Docker expects these tables to exist when
+# it configures container networking via iptables commands.
+#
+# In containers, initialization may fail due to missing capabilities —
+# failed_when: false allows graceful degradation. On real hosts, failure
+# means Docker networking will not function, so we assert success afterward.
+- name: Initialize iptables-nft compat tables
+  become: true
+  loop:
+    - nat
+    - filter
+    - mangle
+  loop_control:
+    loop_var: __docker_engine_table
+  ansible.builtin.command:
+    cmd: "{{ docker_engine_iptables_path }} -t {{ __docker_engine_table }} -L -n"
+  changed_when: false
+  failed_when: false
+  register: __docker_engine_iptables_init
+
+- name: Verify iptables-nft compat tables initialized
+  when: ansible_virtualization_type not in ["docker", "container", "containerd"]
+  vars:
+    __failed_tables: "{{ __docker_engine_iptables_init.results | selectattr('rc', 'ne', 0) | map(attribute='__docker_engine_table') | list }}"
+  ansible.builtin.assert:
+    that:
+      - __failed_tables | length == 0
+    fail_msg: >-
+      Failed to initialize iptables-nft compatibility tables: {{ __failed_tables | join(', ') }}.
+      Docker networking requires nat, filter, and mangle tables to exist.
+      Verify that iptables-nft is installed and {{ docker_engine_iptables_path }} is functional.

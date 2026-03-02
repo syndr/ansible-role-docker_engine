@@ -1,0 +1,50 @@
+---
+# Detect incompatible Docker storage configurations in containerized environments
+#
+# When Docker runs inside a container that uses overlayfs (common in CI and
+# Docker-in-Docker setups), overlay-based storage drivers (overlay2 or overlayfs)
+# cannot create nested overlay mounts on kernels older than 5.11. Container
+# creation fails with cryptic "invalid argument" errors from containerd's
+# snapshotter.
+#
+# Kernel 5.11+ supports native overlay-on-overlay via metacopy/redirect_dir,
+# so this check only applies to older kernels. On newer kernels, overlay2 on
+# an overlayfs backing filesystem works without fuse-overlayfs.
+
+- name: Detect Docker storage compatibility in container environments
+  when:
+    - ansible_virtualization_type in ["docker", "container", "containerd"]
+    - ansible_kernel.split('-')[0] is version('5.11', '<')
+  block:
+    - name: Get Docker storage driver
+      become: true
+      ansible.builtin.command:
+        cmd: "docker info --format '{% raw %}{{ .Driver }}{% endraw %}'"
+      changed_when: false
+      register: __docker_engine_storage_driver
+
+    - name: Get backing filesystem type for Docker data directory
+      become: true
+      ansible.builtin.command:
+        cmd: "stat -f -c %T /var/lib/docker"
+      changed_when: false
+      register: __docker_engine_backing_fs
+
+    - name: Verify storage driver is compatible with backing filesystem
+      vars:
+        __docker_engine_driver: "{{ __docker_engine_storage_driver.stdout | trim | lower }}"
+        __docker_engine_is_native_overlay: "{{ __docker_engine_driver in ['overlay2', 'overlay', 'overlayfs'] }}"
+        __docker_engine_on_overlayfs: "{{ 'overlay' in __docker_engine_backing_fs.stdout | trim | lower }}"
+      ansible.builtin.assert:
+        that:
+          - not (__docker_engine_is_native_overlay | bool and __docker_engine_on_overlayfs | bool)
+        fail_msg: >-
+          Docker is using the {{ __docker_engine_storage_driver.stdout | trim }}
+          storage driver on an overlayfs-backed filesystem at /var/lib/docker.
+          This overlay-on-overlay configuration will cause container creation
+          failures with 'invalid argument' mount errors. Install the
+          'fuse-overlayfs' package and set docker_engine_daemon_options to
+          include {"storage-driver": "fuse-overlayfs"}.
+        success_msg: >-
+          Docker storage driver ({{ __docker_engine_storage_driver.stdout | trim }})
+          is compatible with backing filesystem ({{ __docker_engine_backing_fs.stdout | trim }}).

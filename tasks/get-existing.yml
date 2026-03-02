@@ -1,7 +1,13 @@
 ---
-# Find currently running docker version
+# Detect installed Docker engine version
+#
+# Queries the running daemon first (authoritative engine version). If the
+# daemon is not running — e.g. first install before service start, or after
+# a failed start due to missing kernel modules — falls back to the package
+# manager to detect the installed package version. This prevents false
+# "not installed" results that trigger unnecessary reinstall attempts.
 
-- name: Check if Docker is already installed
+- name: Query Docker engine version from daemon
   become: true
   ansible.builtin.command:
     cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
@@ -9,19 +15,51 @@
   changed_when: false
   failed_when: false
 
-- name: Extract docker version number
+- name: Extract engine version from daemon
   ansible.builtin.set_fact:
     __docker_engine_installed_version: "{{ __docker_engine_installed_version_raw.stdout | from_json }}"
   when: __docker_engine_installed_version_raw.rc == 0
 
-- name: Installed docker not found
-  ansible.builtin.set_fact:
-    __docker_engine_installed_version: ""
+- name: Detect installed Docker package when daemon is not running
   when: __docker_engine_installed_version_raw.rc != 0
+  block:
+    - name: Query RPM package manager for installed Docker # noqa: command-instead-of-module
+      when: ansible_pkg_mgr in ['yum', 'dnf', 'dnf5']
+      become: true
+      ansible.builtin.command:
+        cmd: "rpm -q --queryformat '%{VERSION}' {{ docker_engine_package }}"
+      register: __docker_engine_installed_rpm_query
+      changed_when: false
+      failed_when: false
+
+    - name: Query dpkg for installed Docker
+      when: ansible_pkg_mgr == 'apt'
+      become: true
+      ansible.builtin.command:
+        cmd: "dpkg-query -W -f='${Version}' {{ docker_engine_package }}"
+      register: __docker_engine_installed_dpkg_query
+      changed_when: false
+      failed_when: false
+
+    - name: Consolidate package query result
+      vars:
+        __docker_engine_pkg_query: >-
+          {{ __docker_engine_installed_rpm_query
+             if (ansible_pkg_mgr in ['yum', 'dnf', 'dnf5'])
+             else __docker_engine_installed_dpkg_query }}
+      block:
+        - name: Extract version from installed package
+          when: __docker_engine_pkg_query.rc == 0
+          ansible.builtin.set_fact:
+            __docker_engine_installed_version: "{{ __docker_engine_pkg_query.stdout | trim }}"
+
+        - name: Installed docker not found
+          when: __docker_engine_pkg_query.rc != 0
+          ansible.builtin.set_fact:
+            __docker_engine_installed_version: ""
 
 - name: 🦋 Discovered docker version is
   ansible.builtin.debug:
     var: __docker_engine_installed_version
     verbosity: 1
   when: __docker_engine_installed_version is defined
-
