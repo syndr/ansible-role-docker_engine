@@ -5,6 +5,9 @@
 # Load exact package version if we have docker installed
 - name: Load installed package version
   when: __docker_engine_installed_version is truthy
+  # Read-only probe: must run even under --check, or downstream
+  # parsing sees an empty result and fails the check-mode run.
+  check_mode: false
   ansible.builtin.command:
     cmd: rpm -q {{ docker_engine_package }}
   changed_when: false
@@ -25,6 +28,9 @@
 - name: Locate package to install
   block:
     - name: Find matching package names
+      # Read-only probe: must run even under --check, or downstream
+      # parsing sees an empty result and fails the check-mode run.
+      check_mode: false
       ansible.builtin.command:
         cmd: "yum --disableplugin=versionlock list --showduplicates {{ docker_engine_package }}"
       register: __docker_engine_package_list_raw
@@ -58,6 +64,9 @@
       {{ docker_engine_package }}-{{ __docker_engine_target_package_version if __docker_engine_doinstall else __docker_engine_installed_version }}
   block:
     - name: Load current version lock
+      # Read-only probe: must run even under --check, or downstream
+      # parsing sees an empty result and fails the check-mode run.
+      check_mode: false
       ansible.builtin.command:
         cmd: "yum versionlock list"
       register: __docker_engine_versionlock_list_raw

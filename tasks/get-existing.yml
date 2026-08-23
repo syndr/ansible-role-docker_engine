@@ -3,6 +3,9 @@
 
 - name: Check if Docker is already installed
   become: true
+  # Read-only probe: must run even under --check, or the registered result
+  # has no stdout and the from_json below fails the whole check-mode run.
+  check_mode: false
   ansible.builtin.command:
     cmd: "docker system info --format '{% raw %}{{ json .ServerVersion }}{% endraw %}'"
   register: __docker_engine_installed_version_raw

@@ -3,6 +3,9 @@
 
 - name: Load installed package version
   when: __docker_engine_installed_version is truthy
+  # Read-only probe: must run even under --check, or downstream parsing
+  # sees an empty result and fails the check-mode run.
+  check_mode: false
   ansible.builtin.command:
     cmd: dpkg-query --showformat='${Version}' --show {{ docker_engine_package }}
   changed_when: false
@@ -15,6 +18,8 @@
   when: docker_engine_package_state == 'latest'
 
 - name: Find matching package names
+  # Read-only probe: must run even under --check (see above).
+  check_mode: false
   ansible.builtin.command:
     cmd: apt-cache madison {{ docker_engine_package }}
   register: __docker_engine_package_list_raw
